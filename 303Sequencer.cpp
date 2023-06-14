@@ -24,6 +24,7 @@ DaisySeed hardware;
 Oscillator osc;
 AdEnv synthVolEnv, synthPitchEnv;
 Switch activate_sequence, random_sequence, switch_mode;
+AdcChannelConfig change_bpm;
 Metro tick;
 
 /*
@@ -37,6 +38,8 @@ Metro tick;
 		- switch_mode: Changes the modal character of the sound. I.e 
 		from Ionian to Dorian. Basically means to increase specific notes
 		by a half step. (read more: https://www.classical-music.com/features/articles/modes-in-music-what-they-are-and-how-they-are-used-in-music/)
+	- AdcChannelConfig (pots):
+		- change_bpm: Gradualy change bpm from 30 - 300 (?)
 	- Tick for keeping time using the tick.process() function, returning
 	true when a tick is "active". The tick is set to a specific interval
 	and is activated as long as the AudioCallback (infinite loop) is active.
@@ -45,7 +48,9 @@ Metro tick;
 int steps = 8;
 int active_step = 0;
 int mode_int = 0;
-float tempo_bpm = 120.f; // This should be modified with potentiometer
+int const LOW_RANGE_BPM = 60;
+int const HIGH_RANGE_BPM = 290;
+float tempo_bpm = 120.f;
 string mode = "WWHWWWH"; // W = Whole step, H = Half step  
 bool active = false;
 
@@ -56,6 +61,7 @@ bool active = false;
 	- mode_int: An integer corresponding to the current mode, i.e:
 	Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian or Locrian.
 	Might not be needed in the current implementation.
+	- LOW_RANGE/HIGH_RANGE: Constants for BPM range for the BPM input potentiometer.
 	- tempo_bpm: The current tempo of the sequencer.
 	- mode: This string specifies the steps for the scale going from the 
 	root note upwards. It starts from the major scale (Ionian), which for
@@ -154,12 +160,16 @@ vector<string> randomizeSequence(){
     return resulting_sequence;
 }
 
+float convertBPMtoFreq(float bpm){
+	return (bpm / 60.f)*8.f;
+}
+
 /*
 	AudioHandle::InterleavingInputBuffer  in,
 	AudioHandle::InterleavingOutputBuffer out,??
 */
 
-void buttonHandler(){
+void inputHandler(){
 	// Filters out noise from button-press.	
 	activate_sequence.Debounce();
 	random_sequence.Debounce();
@@ -183,6 +193,13 @@ void buttonHandler(){
         // Temporarily make sequence to scale
         sequence = vector<string>(scale);
     }
+
+	tempo_bpm = floor((hardware.adc.GetFloat(0) * (HIGH_RANGE_BPM - LOW_RANGE_BPM)) + LOW_RANGE_BPM); // BPM range from 30-300
+	
+	//float get_adc_bpm_value = *hardware.adc.GetPtr(1); 
+	//tempo_bpm = get_adc_bpm_value;
+	// tempo_bpm = floor(30 + (static_cast<float>(*hardware.adc.GetPtr(1)) / 1023) * (300 - 30)); 
+	tick.SetFreq(convertBPMtoFreq(tempo_bpm));
 }
 
 /*
@@ -221,12 +238,10 @@ void triggerSequence(){
 	if(tick.Process()){
 		// Access the current note in the scale
 		string note = sequence[active_step];
-		
 		if(active_step == 7)
 			setPitch(notes[note][6]);
 		else
 			setPitch(notes[note][5]);
-
 		synthVolEnv.Trigger();
 		synthPitchEnv.Trigger();
 		
@@ -253,7 +268,7 @@ void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size)
 {
-	buttonHandler();
+	inputHandler();
 	playSequence(size, out);
 }
 
@@ -277,7 +292,6 @@ void configureAndInitHardware(){
 */
 
 void initOscillator(float samplerate){
-	
     osc.Init(samplerate);
     osc.SetWaveform(Oscillator::WAVE_TRI);
     osc.SetAmp(1);
@@ -315,10 +329,12 @@ void initVolEnv(float samplerate){
 */
 
 void initButtons(float samplerate){
-	activate_sequence.Init(hardware.GetPin(28), samplerate / 48.f);
-    random_sequence.Init(hardware.GetPin(27), samplerate / 48.f);
-    switch_mode.Init(hardware.GetPin(25), samplerate / 48.f);
-
+	activate_sequence.Init(hardware.GetPin(28), samplerate / 48.f); // 35
+    random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
+    switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
+	change_bpm.InitSingle(hardware.GetPin(21)); // 28 (First ADC-pin)
+	hardware.adc.Init(&change_bpm, 1); // Set ADC to use our configuration
+	// More pots: https://forum.electro-smith.com/t/adc-reading/541
 }
 
 /*
@@ -347,6 +363,7 @@ int main(void) {
 		Initialize random generator, and start callback.
 	*/
     srand((unsigned int) time(NULL));
+	hardware.adc.Start(); // Start ADC
     hardware.StartAudio(AudioCallback);
     // Loop forever
     for(;;) {}
@@ -354,4 +371,4 @@ int main(void) {
 
 
 // Enable logging
-// hardware.StartLog(false);
+// hardware.StartLog(true);
