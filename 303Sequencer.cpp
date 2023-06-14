@@ -25,7 +25,7 @@ Oscillator osc;
 MoogLadder flt; //
 AdEnv synthVolEnv, synthPitchEnv;
 Switch activate_sequence, random_sequence, switch_mode;
-AdcChannelConfig pots[2];
+AdcChannelConfig pots[3];
 Metro tick;
 
 /*
@@ -197,9 +197,13 @@ void inputHandler(){
 
 	tempo_bpm = floor((hardware.adc.GetFloat(0) * (HIGH_RANGE_BPM - LOW_RANGE_BPM)) + LOW_RANGE_BPM); // BPM range from 30-300
 	tick.SetFreq(convertBPMtoFreq(tempo_bpm));
+	
 	float cutoff = hardware.adc.GetFloat(1) * (20000 - 20) + 20;
 	flt.SetFreq(cutoff);
-}
+
+	float resonance = hardware.adc.GetFloat(2) * (0.89); // 0.2 - 0.99
+	flt.SetRes(resonance);
+}	
 
 /*
 	Prepares the sample for the output audio. 
@@ -313,7 +317,8 @@ void initButtons(float samplerate){
     switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
 	pots[0].InitSingle(hardware.GetPin(21)); // 28, change bpm
 	pots[1].InitSingle(hardware.GetPin(20)); // 27, change cut-off freq
-	hardware.adc.Init(pots, 2); // Set ADC to use our configuration, and how many pots
+	pots[2].InitSingle(hardware.GetPin(19)); // 26, change cut-off freq
+	hardware.adc.Init(pots, 3); // Set ADC to use our configuration, and how many pots
 	// More pots: https://forum.electro-smith.com/t/adc-reading/541
 }
 
