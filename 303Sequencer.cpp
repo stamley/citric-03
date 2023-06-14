@@ -22,9 +22,10 @@ using namespace std;
 
 DaisySeed hardware;
 Oscillator osc;
+MoogLadder flt; //
 AdEnv synthVolEnv, synthPitchEnv;
 Switch activate_sequence, random_sequence, switch_mode;
-AdcChannelConfig change_bpm;
+AdcChannelConfig pots[2];
 Metro tick;
 
 /*
@@ -195,11 +196,9 @@ void inputHandler(){
     }
 
 	tempo_bpm = floor((hardware.adc.GetFloat(0) * (HIGH_RANGE_BPM - LOW_RANGE_BPM)) + LOW_RANGE_BPM); // BPM range from 30-300
-	
-	//float get_adc_bpm_value = *hardware.adc.GetPtr(1); 
-	//tempo_bpm = get_adc_bpm_value;
-	// tempo_bpm = floor(30 + (static_cast<float>(*hardware.adc.GetPtr(1)) / 1023) * (300 - 30)); 
 	tick.SetFreq(convertBPMtoFreq(tempo_bpm));
+	float cutoff = hardware.adc.GetFloat(1) * (20000 - 20) + 20;
+	flt.SetFreq(cutoff);
 }
 
 /*
@@ -220,7 +219,7 @@ void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 		osc_out = osc.Process();
 
 		//Signals can be mixed like this: sig = .5 * noise_out + .5 * osc_out;
-		sig = osc_out;
+		sig = flt.Process(osc_out);
 		//Set the left and right outputs to the (mixed) signals
 		out[i]     = sig;
 		out[i + 1] = sig;
@@ -250,27 +249,7 @@ void triggerSequence(){
 	}
 }
 
-void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
-	if(active){
-		prepareAudioBlock(size, out);
-        triggerSequence();
-    }
-    else
-        /*
-			This part is not understood yet. Without it, the daisyseed 
-			produces a clicking sound when the sequence is inactive.
-		*/
-        for(size_t i = 0; i < size; i += 2) {
-            out[i] = 0;
-            out[i + 1] = 0;
-        }
-}
 
-void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size)
-{
-	inputHandler();
-	playSequence(size, out);
-}
 
 /* 
 	Configure and Initialize the Daisy Seed
@@ -332,9 +311,16 @@ void initButtons(float samplerate){
 	activate_sequence.Init(hardware.GetPin(28), samplerate / 48.f); // 35
     random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
     switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
-	change_bpm.InitSingle(hardware.GetPin(21)); // 28 (First ADC-pin)
-	hardware.adc.Init(&change_bpm, 1); // Set ADC to use our configuration
+	pots[0].InitSingle(hardware.GetPin(21)); // 28, change bpm
+	pots[1].InitSingle(hardware.GetPin(20)); // 27, change cut-off freq
+	hardware.adc.Init(pots, 2); // Set ADC to use our configuration, and how many pots
 	// More pots: https://forum.electro-smith.com/t/adc-reading/541
+}
+
+void initFilter(float samplerate){
+	flt.Init(samplerate);
+	flt.SetRes(0.7);
+	flt.SetFreq(700);
 }
 
 /*
@@ -347,6 +333,28 @@ void initTick(float samplerate){
     tick.Init((tempo_bpm / 60.f)*4.f, samplerate);
 }
 
+void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
+	if(active){
+		prepareAudioBlock(size, out);
+        triggerSequence();
+    }
+    else
+        /*
+			This part is not understood yet. Without it, the daisyseed 
+			produces a clicking sound when the sequence is inactive.
+		*/
+        for(size_t i = 0; i < size; i += 2) {
+            out[i] = 0;
+            out[i + 1] = 0;
+        }
+}
+
+void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size)
+{
+	inputHandler();
+	playSequence(size, out);
+}
+
 int main(void) {
 	configureAndInitHardware();
 	
@@ -356,7 +364,7 @@ int main(void) {
 	initPitchEnv(samplerate);
 	initVolEnv(samplerate);
 	initButtons(samplerate);
-
+	initFilter(samplerate);
 	initTick(samplerate);
     
     /* 
