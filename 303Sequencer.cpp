@@ -277,9 +277,9 @@ void triggerSequence(){
 		// Access the current note in the scale
 		string note = sequence[active_step];
 		if(active_step == 7)
-			setPitch(notes[note][6]);
+			setPitch(notes[note][4]);
 		else
-			setPitch(notes[note][5]);
+			setPitch(notes[note][3]);
 		synthVolEnv.Trigger();
 		synthPitchEnv.Trigger();
 		
@@ -311,7 +311,7 @@ void configureAndInitHardware(){
 
 void initOscillator(float samplerate){
     osc.Init(samplerate);
-    osc.SetWaveform(Oscillator::WAVE_TRI);
+    osc.SetWaveform(Oscillator::WAVE_SAW);
     osc.SetAmp(1);
 }
 
