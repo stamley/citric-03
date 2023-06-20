@@ -25,10 +25,14 @@ int steps = 8;
 int active_step = 0;
 int mode_int = 0;
 int selected_note = 0;
-int const LOW_RANGE_BPM = 60;
-int const HIGH_RANGE_BPM = 290;
+int const LOW_RANGE_BPM = 30;
+int const HIGH_RANGE_BPM = 330;
 int const CUTOFF_MAX = 13000;
 int const CUTOFF_MIN = 20;
+int const ENV_CUTOFF_MAX = 13000; 
+int const ENV_CUTOFF_MIN = 600;
+float const DECAY_MAX = 0.9;
+float const DECAY_MIN = 0.01;
 int const NUMBER_OF_POTS = 5;
 float tempo_bpm = 120.f;
 string mode = "WWHWWWH"; // W = Whole step, H = Half step  
@@ -102,8 +106,10 @@ unordered_map<string, vector<double>> notes = {
     {"B", {30.87, 61.74, 123.47, 246.94, 493.88, 987.77, 1975.53, 3951.07}}
 };
 vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
-//vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
-vector<string> sequence = vector<string>(scale);
+vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
+//vector<string> sequence = vector<string>(scale);
+
+vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
 
 /*
 	For changing the pitch of the synth. (Could be done easier=)
@@ -145,7 +151,6 @@ vector<string> circularShiftLeftArray(vector<string> array){
 */
 
 vector<string> generateScale(){
-    vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
     vector<string> new_scale(scale.size());
 
     int index = 0;
@@ -170,8 +175,15 @@ vector<string> randomizeSequence(){
 
     for(int i = 0; i < static_cast<int>(resulting_sequence.size()); i++){    
         int random_num = rand();
-        int randomIndex = random_num % scale.size();
-        resulting_sequence[i] = scale[randomIndex];
+        int randomIndex = 0;
+		if(mode_int == 0){
+			randomIndex = random_num % all_notes.size();
+        	resulting_sequence[i] = all_notes[randomIndex];
+		}
+		else{
+			randomIndex = random_num % scale.size();
+			resulting_sequence[i] = scale[randomIndex];
+		}
     }
 
     return resulting_sequence;
@@ -214,12 +226,13 @@ void inputHandler(){
     }
 	
 	if(switch_mode.RisingEdge()){
-        mode = circularShiftLeft(mode);
-
-        if(mode_int == 7) mode_int = 0;
+        if(mode_int == 8) mode_int = 0;
         else mode_int++;
 
-        scale = generateScale();
+		if(mode_int != 0){ // not chromatic
+        	mode = circularShiftLeft(mode);
+			scale = generateScale();
+		}
         // Temporarily make sequence to scale
         sequence = vector<string>(scale);
     }
@@ -237,8 +250,11 @@ void inputHandler(){
 	float cutoff = hardware.adc.GetFloat(1) * (CUTOFF_MAX - CUTOFF_MIN) + CUTOFF_MIN;
 	flt.SetFreq(cutoff);
 
-	float resonance = hardware.adc.GetFloat(2) * (0.89); // 0 - 0.89
+	float resonance = hardware.adc.GetFloat(2) * (0.6); // 0 - 0.89
 	flt.SetRes(resonance);
+	float decay = hardware.adc.GetFloat(4) * (DECAY_MAX - DECAY_MIN) + DECAY_MIN;
+	synthVolEnv.SetTime(ADENV_SEG_DECAY, decay);
+	
 }	
 
 /*
@@ -257,9 +273,13 @@ void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 		osc.SetAmp(synth_env_out);
 		//Process the next oscillator sample
 		osc_out = osc.Process();
+		
+
 
 		//Signals can be mixed like this: sig = .5 * noise_out + .5 * osc_out;
-		sig = flt.Process(osc_out);
+		sig = flt.Process(osc_out) * .2;
+		flt.SetFreq(synth_env_out  * (ENV_CUTOFF_MAX - ENV_CUTOFF_MIN) + ENV_CUTOFF_MIN);
+		sig += flt.Process(osc_out) * .8;
 		//Set the left and right outputs to the (mixed) signals
 		out[i]     = sig;
 		out[i + 1] = sig;
@@ -278,9 +298,9 @@ void triggerSequence(){
 		// Access the current note in the scale
 		string note = sequence[active_step];
 		if(note == "C2")
-			setPitch(notes[note.substr(0,1)][4]);
+			setPitch(notes[note.substr(0,1)][3]);
 		else
-			setPitch(notes[note][3]);
+			setPitch(notes[note][2]);
 		synthVolEnv.Trigger();
 		synthPitchEnv.Trigger();
 		
