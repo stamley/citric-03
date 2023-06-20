@@ -101,7 +101,7 @@ unordered_map<string, vector<double>> notes = {
     {"Bb", {29.14, 58.27, 116.54, 233.08, 466.16, 932.33, 1864.66, 3729.31}},
     {"B", {30.87, 61.74, 123.47, 246.94, 493.88, 987.77, 1975.53, 3951.07}}
 };
-vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C"}; // Major (Ionian)
+vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
 //vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
 vector<string> sequence = vector<string>(scale);
 
@@ -145,7 +145,7 @@ vector<string> circularShiftLeftArray(vector<string> array){
 */
 
 vector<string> generateScale(){
-    vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"};
+    vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
     vector<string> new_scale(scale.size());
 
     int index = 0;
@@ -224,9 +224,9 @@ void inputHandler(){
         sequence = vector<string>(scale);
     }
 
-	for(int i = 0; i < seq_buttons.size(); i++){
+	for(int i = 0; i < 8; i++){
 		if(!seq_buttons[i].Read()){
-			int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size() - 1)); // 0 - 7
+			int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
 			sequence[i] = scale[pitch];
 		}
 	}
@@ -277,8 +277,8 @@ void triggerSequence(){
 	if(tick.Process()){
 		// Access the current note in the scale
 		string note = sequence[active_step];
-		if(active_step == 7)
-			setPitch(notes[note][4]);
+		if(note == "C2")
+			setPitch(notes[note.substr(0,1)][4]);
 		else
 			setPitch(notes[note][3]);
 		synthVolEnv.Trigger();
