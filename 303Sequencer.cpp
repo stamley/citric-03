@@ -27,7 +27,7 @@ AdEnv synthVolEnv, synthPitchEnv;
 Switch activate_sequence, random_sequence, switch_mode, select_note, change_pitch;
 AdcChannelConfig pots[3];
 Metro tick;
-GPIO led1, led2, led3, led4, led5, led6, led7, led8;
+GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
 vector<GPIO> leds(8);
 
 /*
@@ -50,6 +50,8 @@ vector<GPIO> leds(8);
 	- Tick for keeping time using the tick.process() function, returning
 	true when a tick is "active". The tick is set to a specific interval
 	and is activated as long as the AudioCallback (infinite loop) is active.
+	- seq_buttons: Buttons for each note in the sequence, used to control
+	the pitch for each note.
 */
 
 int steps = 8;
@@ -376,17 +378,14 @@ void initTick(float samplerate){
 }
 
 void initLEDOutputs(){
-	led1.Init(daisy::seed::D7, GPIO::Mode::OUTPUT);
-	led2.Init(daisy::seed::D8, GPIO::Mode::OUTPUT);
-	led3.Init(daisy::seed::D9, GPIO::Mode::OUTPUT);
-	led4.Init(daisy::seed::D10, GPIO::Mode::OUTPUT);
-	led5.Init(daisy::seed::D11, GPIO::Mode::OUTPUT);
-	led6.Init(daisy::seed::D12, GPIO::Mode::OUTPUT);
-	led7.Init(daisy::seed::D13, GPIO::Mode::OUTPUT);
-	led8.Init(daisy::seed::D14, GPIO::Mode::OUTPUT);
-	led1.Write(true);
-
-	leds = {led1, led2, led3, led4, led5, led6, led7, led8};
+	seq_button1.Init(daisy::seed::D7, GPIO::Mode::OUTPUT);
+	seq_button2.Init(daisy::seed::D8, GPIO::Mode::OUTPUT);
+	seq_button3.Init(daisy::seed::D9, GPIO::Mode::OUTPUT);
+	seq_button4.Init(daisy::seed::D10, GPIO::Mode::OUTPUT);
+	seq_button5.Init(daisy::seed::D11, GPIO::Mode::OUTPUT);
+	seq_button6.Init(daisy::seed::D12, GPIO::Mode::OUTPUT);
+	seq_button7.Init(daisy::seed::D13, GPIO::Mode::OUTPUT);
+	seq_button8.Init(daisy::seed::D14, GPIO::Mode::OUTPUT);
 }
 
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
