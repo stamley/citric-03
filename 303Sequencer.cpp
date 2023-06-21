@@ -27,13 +27,19 @@ int mode_int = 0;
 int selected_note = 0;
 int const LOW_RANGE_BPM = 30;
 int const HIGH_RANGE_BPM = 330;
+
 int const CUTOFF_MAX = 13000;
 int const CUTOFF_MIN = 20;
+
 int const ENV_CUTOFF_MAX = 13000; 
 int const ENV_CUTOFF_MIN = 600;
+
 float const DECAY_MAX = 0.9;
 float const DECAY_MIN = 0.01;
-int const NUMBER_OF_POTS = 5;
+
+float env_mod = 0.8;
+float cutoff = 13000.f;
+int const NUMBER_OF_POTS = 6;
 float tempo_bpm = 120.f;
 string mode = "WWHWWWH"; // W = Whole step, H = Half step  
 bool active = false;
@@ -65,6 +71,8 @@ AdcChannelConfig pots[NUMBER_OF_POTS]; // tempo, cut-off, resonance, pitch, deca
 Metro tick;
 GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
 vector<GPIO> seq_buttons(8);
+
+GPIO debug_led;
 
 /*
 	- Hardware starts audio and controls daisy seed functionality.
@@ -247,14 +255,16 @@ void inputHandler(){
 	tempo_bpm = floor((hardware.adc.GetFloat(0) * (HIGH_RANGE_BPM - LOW_RANGE_BPM)) + LOW_RANGE_BPM); // BPM range from 30-300
 	tick.SetFreq(convertBPMtoFreq(tempo_bpm));
 	
-	float cutoff = hardware.adc.GetFloat(1) * (CUTOFF_MAX - CUTOFF_MIN) + CUTOFF_MIN;
-	flt.SetFreq(cutoff);
+	cutoff = hardware.adc.GetFloat(1) * (CUTOFF_MAX - CUTOFF_MIN) + CUTOFF_MIN;
+	//flt.SetFreq(cutoff);
 
 	float resonance = hardware.adc.GetFloat(2) * (0.6); // 0 - 0.89
 	flt.SetRes(resonance);
+
 	float decay = hardware.adc.GetFloat(4) * (DECAY_MAX - DECAY_MIN) + DECAY_MIN;
 	synthVolEnv.SetTime(ADENV_SEG_DECAY, decay);
 	
+	env_mod = hardware.adc.GetFloat(5) * 1.0;
 }	
 
 /*
@@ -277,9 +287,20 @@ void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 
 
 		//Signals can be mixed like this: sig = .5 * noise_out + .5 * osc_out;
-		sig = flt.Process(osc_out) * .2;
-		flt.SetFreq(synth_env_out  * (ENV_CUTOFF_MAX - ENV_CUTOFF_MIN) + ENV_CUTOFF_MIN);
-		sig += flt.Process(osc_out) * .8;
+		// how the fuck``?
+		//if(env_mod != 1){	
+		//	float decay_envelope = (synth_env_out  * (ENV_CUTOFF_MAX - ENV_CUTOFF_MIN) + ENV_CUTOFF_MIN); 
+		//	flt.SetFreq(decay_envelope);
+		//}
+		int non_zero_result = static_cast<int>(env_mod)/static_cast<int>(1);
+		flt.SetFreq((synth_env_out * (1 - env_mod) + ((env_mod >= 1.f) ? 1 : 0)) * (cutoff * env_mod));
+		if(env_mod > 0.5)
+			debug_led.Write(true);
+		else
+			debug_led.Write(false);
+		sig = flt.Process(osc_out);
+		//flt.SetFreq(synth_env_out  * (ENV_CUTOFF_MAX - ENV_CUTOFF_MIN) + ENV_CUTOFF_MIN);
+		//sig += flt.Process(osc_out) * (1 - env_mod);
 		//Set the left and right outputs to the (mixed) signals
 		out[i]     = sig;
 		out[i + 1] = sig;
@@ -376,6 +397,7 @@ void initButtons(float samplerate){
 	pots[2].InitSingle(hardware.GetPin(19)); // 26, change resonance
 	pots[3].InitSingle(hardware.GetPin(22)); // 29, note pitch
 	pots[4].InitSingle(hardware.GetPin(23)); // 30, decay
+	pots[5].InitSingle(hardware.GetPin(18)); // 25, env_mod
 	hardware.adc.Init(pots, NUMBER_OF_POTS); // Set ADC to use our configuration, and how many pots
 	// More pots: https://forum.electro-smith.com/t/adc-reading/541
 }
@@ -444,6 +466,8 @@ int main(void) {
 	initFilter(samplerate);
 	initTick(samplerate);
 	initSeqButtons();
+	
+	debug_led.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
     
     /* 
 		Initialize random generator, and start callback.
