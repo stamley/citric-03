@@ -28,14 +28,15 @@ int selected_note = 0;
 int const LOW_RANGE_BPM = 30;
 int const HIGH_RANGE_BPM = 330;
 
-int const CUTOFF_MAX = 13000;
-int const CUTOFF_MIN = 20;
+int const CUTOFF_MAX = 16000;
+int const CUTOFF_MIN = 0;
 
-int const ENV_CUTOFF_MAX = 13000; 
-int const ENV_CUTOFF_MIN = 600;
+int const SVAJ_INTERVALL = 11000;
 
 float const DECAY_MAX = 0.9;
 float const DECAY_MIN = 0.01;
+
+float const MAX_RESONANCE = 0.89;
 
 float env_mod = 0.8;
 float cutoff = 13000.f;
@@ -258,7 +259,7 @@ void inputHandler(){
 	cutoff = hardware.adc.GetFloat(1) * (CUTOFF_MAX - CUTOFF_MIN) + CUTOFF_MIN;
 	//flt.SetFreq(cutoff);
 
-	float resonance = hardware.adc.GetFloat(2) * (0.6); // 0 - 0.89
+	float resonance = hardware.adc.GetFloat(2) * (MAX_RESONANCE); // 0 - 0.89
 	flt.SetRes(resonance);
 
 	float decay = hardware.adc.GetFloat(4) * (DECAY_MAX - DECAY_MIN) + DECAY_MIN;
@@ -292,9 +293,16 @@ void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 		//	float decay_envelope = (synth_env_out  * (ENV_CUTOFF_MAX - ENV_CUTOFF_MIN) + ENV_CUTOFF_MIN); 
 		//	flt.SetFreq(decay_envelope);
 		//}
-		int non_zero_result = static_cast<int>(env_mod)/static_cast<int>(1);
-		flt.SetFreq((synth_env_out * (1 - env_mod) + ((env_mod >= 1.f) ? 1 : 0)) * (cutoff * env_mod));
-		if(env_mod > 0.5)
+		// int non_zero_result = static_cast<int>(env_mod)/static_cast<int>(1);
+		//float decay_envelope = (1.0 - synth_env_out) * env_mod;
+		//float cutoff_freq = cutoff + decay_envelope * cutoff;
+
+		// Env mod DOESNT reach 1
+		// synth env out
+		// float env_rounded = floor(env_mod * 100) / 100;
+		// flt.SetFreq((env_rounded * synth_env_out + ((env_rounded <= 0.00f) ? 1.f : 0.f)) * cutoff);
+		flt.SetFreq(env_mod * synth_env_out * SVAJ_INTERVALL + cutoff);
+		if(synth_env_out >= 1.1f)
 			debug_led.Write(true);
 		else
 			debug_led.Write(false);
