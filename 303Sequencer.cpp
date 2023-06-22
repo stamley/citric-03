@@ -20,15 +20,69 @@ using namespace daisy;
 using namespace daisysp;
 using namespace std;
 
+
+int steps = 8;
+int active_step = 0;
+int mode_int = 0;
+int selected_note = 0;
+int const NUMBER_OF_POTS = 6;
+
+int const LOW_RANGE_BPM = 30;
+int const HIGH_RANGE_BPM = 330;
+
+int const CUTOFF_MAX = 16000;
+int const CUTOFF_MIN = 0;
+
+float const DECAY_MAX = 0.9;
+float const DECAY_MIN = 0.01;
+
+float const MAX_RESONANCE = 0.89;
+
+int const FILTER_MOVEMENT = 11000;
+
+float env_mod = 0.8;
+float cutoff = 13000.f;
+
+float tempo_bpm = 120.f;
+string mode = "WWHWWWH"; // W = Whole step, H = Half step  
+bool active = false;
+
+/*
+	- Steps: Number of steps in the sequence
+	- Active_step: The current active step, is incremented for each played
+	note
+	- mode_int: An integer corresponding to the current mode, i.e:
+	Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian or Locrian.
+	Might not be needed in the current implementation.
+	- selected_note: which note in the sequence is currently selected (0-7 range)
+	- LOW_RANGE/HIGH_RANGE: Constants for BPM range for the BPM input potentiometer.
+	- CUTOFF_MAX/CUTOFF_MIN: Range for cutoff potentiometer
+	- FILTER_MOVEMENT: How much the filter will move with each note.
+	Thought this will correspond to amount in frequency, but not sure
+	- DECAY_MAX/DECAY_MIN: Range for the decay potentiometer.
+	- MAX_RESONANCE: The maximum value for the resonance potentiometer.
+	- env_mod: Variable for env_mod potentiometer.
+	- cutoff: Variable for cutoff potentiometer.
+	- tempo_bpm: The current tempo of the sequencer.
+	- mode: This string specifies the steps for the scale going from the 
+	root note upwards. It starts from the major scale (Ionian), which for
+	C is  "C", "D", "E", "F", "G", "A", "B". 
+	This string will be left shifted to the left to change the mode.
+	- active: True/False if the sequencer is active or not. 
+*/
+
 DaisySeed hardware;
 Oscillator osc;
 MoogLadder flt; 
+Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
-Switch activate_sequence, random_sequence, switch_mode, select_note, change_pitch;
-AdcChannelConfig pots[3];
+Switch activate_sequence, random_sequence, switch_mode;
+AdcChannelConfig pots[NUMBER_OF_POTS]; // tempo, cut-off, resonance, pitch, decay, env_mod
 Metro tick;
-GPIO led1, led2, led3, led4, led5, led6, led7, led8;
-vector<GPIO> leds(8);
+GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
+vector<GPIO> seq_buttons(8);
+
+GPIO debug_led;
 
 /*
 	- Hardware starts audio and controls daisy seed functionality.
@@ -50,34 +104,10 @@ vector<GPIO> leds(8);
 	- Tick for keeping time using the tick.process() function, returning
 	true when a tick is "active". The tick is set to a specific interval
 	and is activated as long as the AudioCallback (infinite loop) is active.
+	- seq_buttons: Buttons for each note in the sequence, used to control
+	the pitch for each note.
 */
 
-int steps = 8;
-int active_step = 0;
-int mode_int = 0;
-int selected_note = 0;
-int const LOW_RANGE_BPM = 60;
-int const HIGH_RANGE_BPM = 290;
-float tempo_bpm = 120.f;
-string mode = "WWHWWWH"; // W = Whole step, H = Half step  
-bool active = false;
-
-/*
-	- Steps: Number of steps in the sequence
-	- Active_step: The current active step, is incremented for each played
-	note
-	- mode_int: An integer corresponding to the current mode, i.e:
-	Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian or Locrian.
-	Might not be needed in the current implementation.
-	- selected_note: which note in the sequence is currently selected (0-7 range)
-	- LOW_RANGE/HIGH_RANGE: Constants for BPM range for the BPM input potentiometer.
-	- tempo_bpm: The current tempo of the sequencer.
-	- mode: This string specifies the steps for the scale going from the 
-	root note upwards. It starts from the major scale (Ionian), which for
-	C is  "C", "D", "E", "F", "G", "A", "B". 
-	This string will be left shifted to the left to change the mode.
-	- active: True/False if the sequencer is active or not. 
-*/
 
 unordered_map<string, vector<double>> notes = {
     {"C", {16.35, 32.70, 65.41, 130.81, 261.63, 523.25, 1046.50, 2093.00, 4186.01}},
@@ -93,9 +123,9 @@ unordered_map<string, vector<double>> notes = {
     {"Bb", {29.14, 58.27, 116.54, 233.08, 466.16, 932.33, 1864.66, 3729.31}},
     {"B", {30.87, 61.74, 123.47, 246.94, 493.88, 987.77, 1975.53, 3951.07}}
 };
-vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C"}; // Major (Ionian)
-//vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
-vector<string> sequence = vector<string>(scale);
+vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
+vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
+vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
 
 /*
 	For changing the pitch of the synth. (Could be done easier=)
@@ -137,7 +167,6 @@ vector<string> circularShiftLeftArray(vector<string> array){
 */
 
 vector<string> generateScale(){
-    vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B"};
     vector<string> new_scale(scale.size());
 
     int index = 0;
@@ -162,8 +191,15 @@ vector<string> randomizeSequence(){
 
     for(int i = 0; i < static_cast<int>(resulting_sequence.size()); i++){    
         int random_num = rand();
-        int randomIndex = random_num % scale.size();
-        resulting_sequence[i] = scale[randomIndex];
+        int randomIndex = 0;
+		if(mode_int == 0){
+			randomIndex = random_num % all_notes.size();
+        	resulting_sequence[i] = all_notes[randomIndex];
+		}
+		else{
+			randomIndex = random_num % scale.size();
+			resulting_sequence[i] = scale[randomIndex];
+		}
     }
 
     return resulting_sequence;
@@ -186,24 +222,13 @@ void increasePitchForActiveNote(){
 	}
 }
 
-void setLightForSelectedNote(){
-	leds[selected_note].Write(false);
-	selected_note = (selected_note + 1) % steps;
-	leds[selected_note].Write(true);
-}
 
-/*
-	AudioHandle::InterleavingInputBuffer  in,
-	AudioHandle::InterleavingOutputBuffer out,??
-*/
 
 void inputHandler(){
 	// Filters out noise from button-press.	
 	activate_sequence.Debounce();
 	random_sequence.Debounce();
 	switch_mode.Debounce();
-	select_note.Debounce();
-	change_pitch.Debounce();
 
 	if(activate_sequence.RisingEdge())
         active = !active;
@@ -214,30 +239,37 @@ void inputHandler(){
     }
 	
 	if(switch_mode.RisingEdge()){
-        mode = circularShiftLeft(mode);
-
-        if(mode_int == 7) mode_int = 0;
+        if(mode_int == 8) mode_int = 0;
         else mode_int++;
 
-        scale = generateScale();
+		if(mode_int != 0){ // not chromatic
+        	mode = circularShiftLeft(mode);
+			scale = generateScale();
+		}
         // Temporarily make sequence to scale
         sequence = vector<string>(scale);
     }
 
-	if(select_note.RisingEdge())
-		setLightForSelectedNote();
-
-	if(change_pitch.RisingEdge())
-		increasePitchForActiveNote();
+	for(int i = 0; i < 8; i++){
+		if(!seq_buttons[i].Read()){
+			int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
+			sequence[i] = scale[pitch];
+		}
+	}
 
 	tempo_bpm = floor((hardware.adc.GetFloat(0) * (HIGH_RANGE_BPM - LOW_RANGE_BPM)) + LOW_RANGE_BPM); // BPM range from 30-300
 	tick.SetFreq(convertBPMtoFreq(tempo_bpm));
 	
-	float cutoff = hardware.adc.GetFloat(1) * (20000 - 20) + 20;
-	flt.SetFreq(cutoff);
+	cutoff = hardware.adc.GetFloat(1) * (CUTOFF_MAX - CUTOFF_MIN) + CUTOFF_MIN;
+	//flt.SetFreq(cutoff);
 
-	float resonance = hardware.adc.GetFloat(2) * (0.89); // 0.2 - 0.99
+	float resonance = hardware.adc.GetFloat(2) * (MAX_RESONANCE); // 0 - 0.89
 	flt.SetRes(resonance);
+
+	float decay = hardware.adc.GetFloat(4) * (DECAY_MAX - DECAY_MIN) + DECAY_MIN;
+	synthVolEnv.SetTime(ADENV_SEG_DECAY, decay);
+	
+	env_mod = hardware.adc.GetFloat(5) * 1.0;
 }	
 
 /*
@@ -256,10 +288,15 @@ void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 		osc.SetAmp(synth_env_out);
 		//Process the next oscillator sample
 		osc_out = osc.Process();
+		
+		// Blend cutoff with movement based on envelope
+		flt.SetFreq(env_mod * synth_env_out * FILTER_MOVEMENT + cutoff);
+		if(synth_env_out >= 1.1f)
+			debug_led.Write(true);
+		else
+			debug_led.Write(false);
+		sig = dist.Process(flt.Process(osc_out));
 
-		//Signals can be mixed like this: sig = .5 * noise_out + .5 * osc_out;
-		sig = flt.Process(osc_out);
-		//Set the left and right outputs to the (mixed) signals
 		out[i]     = sig;
 		out[i + 1] = sig;
 	}
@@ -276,10 +313,10 @@ void triggerSequence(){
 	if(tick.Process()){
 		// Access the current note in the scale
 		string note = sequence[active_step];
-		if(active_step == 7)
-			setPitch(notes[note][4]);
+		if(note == "C2")
+			setPitch(notes[note.substr(0,1)][3]);
 		else
-			setPitch(notes[note][3]);
+			setPitch(notes[note][2]);
 		synthVolEnv.Trigger();
 		synthPitchEnv.Trigger();
 		
@@ -287,8 +324,6 @@ void triggerSequence(){
 		active_step = (active_step + 1) % steps;
 	}
 }
-
-
 
 /* 
 	Configure and Initialize the Daisy Seed
@@ -350,12 +385,13 @@ void initButtons(float samplerate){
 	activate_sequence.Init(hardware.GetPin(28), samplerate / 48.f); // 35
     random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
     switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
-	select_note.Init(hardware.GetPin(23), samplerate / 48.f); // 30
-	change_pitch.Init(hardware.GetPin(22), samplerate / 48.f); // 29
 	pots[0].InitSingle(hardware.GetPin(21)); // 28, change bpm
 	pots[1].InitSingle(hardware.GetPin(20)); // 27, change cut-off freq
-	pots[2].InitSingle(hardware.GetPin(19)); // 26, change cut-off freq
-	hardware.adc.Init(pots, 3); // Set ADC to use our configuration, and how many pots
+	pots[2].InitSingle(hardware.GetPin(19)); // 26, change resonance
+	pots[3].InitSingle(hardware.GetPin(22)); // 29, note pitch
+	pots[4].InitSingle(hardware.GetPin(23)); // 30, decay
+	pots[5].InitSingle(hardware.GetPin(18)); // 25, env_mod
+	hardware.adc.Init(pots, NUMBER_OF_POTS); // Set ADC to use our configuration, and how many pots
 	// More pots: https://forum.electro-smith.com/t/adc-reading/541
 }
 
@@ -375,18 +411,18 @@ void initTick(float samplerate){
     tick.Init((tempo_bpm / 60.f)*4.f, samplerate);
 }
 
-void initLEDOutputs(){
-	led1.Init(daisy::seed::D7, GPIO::Mode::OUTPUT);
-	led2.Init(daisy::seed::D8, GPIO::Mode::OUTPUT);
-	led3.Init(daisy::seed::D9, GPIO::Mode::OUTPUT);
-	led4.Init(daisy::seed::D10, GPIO::Mode::OUTPUT);
-	led5.Init(daisy::seed::D11, GPIO::Mode::OUTPUT);
-	led6.Init(daisy::seed::D12, GPIO::Mode::OUTPUT);
-	led7.Init(daisy::seed::D13, GPIO::Mode::OUTPUT);
-	led8.Init(daisy::seed::D14, GPIO::Mode::OUTPUT);
-	led1.Write(true);
 
-	leds = {led1, led2, led3, led4, led5, led6, led7, led8};
+void initSeqButtons(){
+	seq_button1.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button2.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button3.Init(daisy::seed::D9, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button4.Init(daisy::seed::D10, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button5.Init(daisy::seed::D11, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button6.Init(daisy::seed::D12, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button7.Init(daisy::seed::D13, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button8.Init(daisy::seed::D14, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+
+	seq_buttons = {seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8};
 }
 
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
@@ -422,7 +458,10 @@ int main(void) {
 	initButtons(samplerate);
 	initFilter(samplerate);
 	initTick(samplerate);
-	initLEDOutputs();
+	initSeqButtons();
+	dist.SetDrive(0.5);
+	
+	debug_led.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
     
     /* 
 		Initialize random generator, and start callback.
@@ -433,7 +472,3 @@ int main(void) {
     // Loop forever
     for(;;) {}
 }
-
-
-// Enable logging
-// hardware.StartLog(true);
