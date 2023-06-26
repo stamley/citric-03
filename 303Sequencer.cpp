@@ -5,7 +5,6 @@
 #include <vector>
 #include <random>
 #include <ctime>
-#include <chrono>
 
 /*
 	Includes:
@@ -80,7 +79,7 @@ Oscillator osc;
 MoogLadder flt; 
 Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
-Switch activate_sequence, random_sequence, switch_mode, activate_slide;
+Switch activate_sequence, random_sequence, switch_mode, activate_slide, change_pitch;
 AdcChannelConfig pots[NUMBER_OF_POTS]; // tempo, cut-off, resonance, pitch, decay, env_mod
 Metro tick;
 GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
@@ -238,7 +237,8 @@ void increasePitchForActiveNote(){
 
 void inputHandler(){
 
-	// Filters out noise from button-press.	
+	// Filters out noise from button-press.
+	change_pitch.Debounce();
 	activate_sequence.Debounce();
 	random_sequence.Debounce();
 	switch_mode.Debounce();
@@ -271,10 +271,13 @@ void inputHandler(){
 		if(!seq_buttons[i].Read()){
 			if(activate_slide.Pressed())
 				slide[i] = !slide[i];
-			else{
+			else if(change_pitch.Pressed()){
 				int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
 				sequence[i] = scale[pitch];
 			}
+			else{
+				activated_notes[i] = !activated_notes[i];
+ 			}
 		}
 	}
 
@@ -427,6 +430,7 @@ void initButtons(float samplerate){
     random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
     switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
 	activate_slide.Init(hardware.GetPin(15), samplerate / 48.f); // 22
+	change_pitch.Init(hardware.GetPin(24), samplerate / 48.f); // 31
 }
 
 void initPots(){
