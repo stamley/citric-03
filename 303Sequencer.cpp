@@ -21,6 +21,7 @@ using namespace daisysp;
 using namespace std;
 
 
+
 int steps = 8;
 int active_step = 0;
 int mode_int = 0;
@@ -46,6 +47,8 @@ float cutoff = 13000.f;
 float tempo_bpm = 120.f;
 string mode = "WWHWWWH"; // W = Whole step, H = Half step  
 bool active = false;
+
+const double DOUBLE_CLICK_THRESHOLD = 0.5;
 
 /*
 	- Steps: Number of steps in the sequence
@@ -76,7 +79,7 @@ Oscillator osc;
 MoogLadder flt; 
 Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
-Switch activate_sequence, random_sequence, switch_mode, activate_slide;
+Switch activate_sequence, random_sequence, switch_mode, activate_slide, change_pitch;
 AdcChannelConfig pots[NUMBER_OF_POTS]; // tempo, cut-off, resonance, pitch, decay, env_mod
 Metro tick;
 GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
@@ -127,6 +130,7 @@ vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ioni
 vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
 vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
 vector<bool> slide = {false, false, false, false, false, false, false, false};
+vector<bool> activated_notes = {true, true, true, true, true, true, true, true};
 
 /*
 	For changing the pitch of the synth. (Could be done easier)
@@ -232,7 +236,9 @@ void increasePitchForActiveNote(){
 
 
 void inputHandler(){
-	// Filters out noise from button-press.	
+
+	// Filters out noise from button-press.
+	change_pitch.Debounce();
 	activate_sequence.Debounce();
 	random_sequence.Debounce();
 	switch_mode.Debounce();
@@ -265,10 +271,13 @@ void inputHandler(){
 		if(!seq_buttons[i].Read()){
 			if(activate_slide.Pressed())
 				slide[i] = !slide[i];
-			else{
+			else if(change_pitch.Pressed()){
 				int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
 				sequence[i] = scale[pitch];
 			}
+			else{
+				activated_notes[i] = !activated_notes[i];
+ 			}
 		}
 	}
 
@@ -356,9 +365,7 @@ void triggerSequence(){
 			setPitch(current_freq);
 		synthVolEnv.Trigger();
 		synthPitchEnv.Trigger();
-		
-		// Increase the step in sequence
-		active_step = (active_step + 1) % steps;
+	
 	}
 }
 
@@ -423,6 +430,7 @@ void initButtons(float samplerate){
     random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
     switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
 	activate_slide.Init(hardware.GetPin(15), samplerate / 48.f); // 22
+	change_pitch.Init(hardware.GetPin(24), samplerate / 48.f); // 31
 }
 
 void initPots(){
@@ -467,19 +475,25 @@ void initSeqButtons(){
 }
 
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
-	if(active){
+	
+	if(activated_notes[active_step] && active){
 		prepareAudioBlock(size, out);
         triggerSequence();
-    }
-    else
-        /*
+		active_step = (active_step + 1) % steps;
+		// Increase the step in sequence
+	}
+	else{
+		/*
 			This part is not understood yet. Without it, the daisyseed 
 			produces a clicking sound when the sequence is inactive.
-		*/
+		*/	
         for(size_t i = 0; i < size; i += 2) {
             out[i] = 0;
             out[i + 1] = 0;
         }
+	}
+    if(active)
+		active_step = (active_step + 1) % steps;
 }
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size)
