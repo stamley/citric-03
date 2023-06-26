@@ -80,7 +80,7 @@ Oscillator osc;
 MoogLadder flt; 
 Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
-Switch activate_sequence, random_sequence, switch_mode;
+Switch activate_sequence, random_sequence, switch_mode, activate_slide;
 AdcChannelConfig pots[NUMBER_OF_POTS]; // tempo, cut-off, resonance, pitch, decay, env_mod
 Metro tick;
 GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
@@ -130,15 +130,22 @@ unordered_map<string, vector<double>> notes = {
 vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
 vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
 vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
+vector<bool> slide = {false, false, false, false, false, false, false, false};
 vector<bool> activated_notes = {true, true, true, true, true, true, true, true};
 
 /*
-	For changing the pitch of the synth. (Could be done easier=)
+	For changing the pitch of the synth. (Could be done easier)
 */
 
 void setPitch(double freq){
     synthPitchEnv.SetMax(freq);
     synthPitchEnv.SetMin(freq);
+}
+
+void setSlide(double note, double note_before){
+	synthPitchEnv.SetMax(note);
+	synthPitchEnv.SetMin(note_before);
+	synthPitchEnv.SetTime(ADENV_SEG_DECAY, static_cast<float>(60/tempo_bpm));
 }
 
 /*
@@ -235,6 +242,7 @@ void inputHandler(){
 	activate_sequence.Debounce();
 	random_sequence.Debounce();
 	switch_mode.Debounce();
+	activate_slide.Debounce();
 
 	if(activate_sequence.RisingEdge())
         active = !active;
@@ -256,10 +264,17 @@ void inputHandler(){
         sequence = vector<string>(scale);
     }
 
+	/* 
+		Press slide button before pressing the note in the sequence.
+	*/
 	for(int i = 0; i < 8; i++){
 		if(!seq_buttons[i].Read()){
-			int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
-			sequence[i] = scale[pitch];
+			if(activate_slide.Pressed())
+				slide[i] = !slide[i];
+			else{
+				int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
+				sequence[i] = scale[pitch];
+			}
 		}
 	}
 
@@ -308,6 +323,24 @@ void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 	}
 }
 
+double getFreqOfNote(string note){
+	double current_freq;
+	if(note == "C2")
+		current_freq = notes[note.substr(0,1)][3];
+	else
+		current_freq = notes[note][2];
+
+	return current_freq;
+}
+
+/*
+	Handles negative numbers, true modulo
+*/
+
+int modulo(int dividend, int divisor){
+	return (dividend % divisor + divisor) % divisor;
+}
+
 /*
 	Triggers a note in the sequence, and increases the active step.
 	If the active step is at the last place, and the synth is at the first 
@@ -319,10 +352,14 @@ void triggerSequence(){
 	if(tick.Process()){
 		// Access the current note in the scale
 		string note = sequence[active_step];
-		if(note == "C2")
-			setPitch(notes[note.substr(0,1)][3]);
+		double current_freq = getFreqOfNote(note);
+		
+		if(slide[active_step]){
+			double previous_freq = getFreqOfNote(sequence[modulo((active_step - 1), steps)]); 
+			setSlide(current_freq, previous_freq);
+		}
 		else
-			setPitch(notes[note][2]);
+			setPitch(current_freq);
 		synthVolEnv.Trigger();
 		synthPitchEnv.Trigger();
 	
@@ -389,6 +426,10 @@ void initButtons(float samplerate){
 	activate_sequence.Init(hardware.GetPin(28), samplerate / 48.f); // 35
     random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
     switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
+	activate_slide.Init(hardware.GetPin(15), samplerate / 48.f); // 22
+}
+
+void initPots(){
 	pots[0].InitSingle(hardware.GetPin(21)); // 28, change bpm
 	pots[1].InitSingle(hardware.GetPin(20)); // 27, change cut-off freq
 	pots[2].InitSingle(hardware.GetPin(19)); // 26, change resonance
@@ -466,6 +507,7 @@ int main(void) {
 	initPitchEnv(samplerate);
 	initVolEnv(samplerate);
 	initButtons(samplerate);
+	initPots();
 	initFilter(samplerate);
 	initTick(samplerate);
 	initSeqButtons();
