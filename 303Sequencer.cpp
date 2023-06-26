@@ -5,6 +5,7 @@
 #include <vector>
 #include <random>
 #include <ctime>
+#include <chrono>
 
 /*
 	Includes:
@@ -19,6 +20,7 @@
 using namespace daisy;
 using namespace daisysp;
 using namespace std;
+
 
 
 int steps = 8;
@@ -46,6 +48,8 @@ float cutoff = 13000.f;
 float tempo_bpm = 120.f;
 string mode = "WWHWWWH"; // W = Whole step, H = Half step  
 bool active = false;
+
+const double DOUBLE_CLICK_THRESHOLD = 0.5;
 
 /*
 	- Steps: Number of steps in the sequence
@@ -126,6 +130,7 @@ unordered_map<string, vector<double>> notes = {
 vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
 vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
 vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
+vector<bool> activated_notes = {true, true, true, true, true, true, true, true};
 
 /*
 	For changing the pitch of the synth. (Could be done easier=)
@@ -225,6 +230,7 @@ void increasePitchForActiveNote(){
 
 
 void inputHandler(){
+
 	// Filters out noise from button-press.	
 	activate_sequence.Debounce();
 	random_sequence.Debounce();
@@ -319,9 +325,7 @@ void triggerSequence(){
 			setPitch(notes[note][2]);
 		synthVolEnv.Trigger();
 		synthPitchEnv.Trigger();
-		
-		// Increase the step in sequence
-		active_step = (active_step + 1) % steps;
+	
 	}
 }
 
@@ -426,19 +430,25 @@ void initSeqButtons(){
 }
 
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
-	if(active){
+	
+	if(activated_notes[active_step] && active){
 		prepareAudioBlock(size, out);
         triggerSequence();
-    }
-    else
-        /*
+		active_step = (active_step + 1) % steps;
+		// Increase the step in sequence
+	}
+	else{
+		/*
 			This part is not understood yet. Without it, the daisyseed 
 			produces a clicking sound when the sequence is inactive.
-		*/
+		*/	
         for(size_t i = 0; i < size; i += 2) {
             out[i] = 0;
             out[i + 1] = 0;
         }
+	}
+    if(active)
+		active_step = (active_step + 1) % steps;
 }
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size)
