@@ -125,6 +125,7 @@ unordered_map<string, vector<double>> notes = {
 };
 vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
 vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
+vector<string> prev_sequence = sequence;
 vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
 vector<bool> slide = {false, false, false, false, false, false, false, false};
 
@@ -267,7 +268,10 @@ void inputHandler(){
 				slide[i] = !slide[i];
 			else{
 				int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
-				sequence[i] = scale[pitch];
+				if(pitch == 0)
+					sequence[i] == "OFF" ? sequence[i] = prev_sequence[i] : sequence[i] = "OFF";
+				else
+					sequence[i] = scale[pitch];
 			}
 		}
 	}
