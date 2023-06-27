@@ -245,6 +245,7 @@ void inputHandler(){
 	if(random_sequence.RisingEdge()){
         active_step = 0;
         sequence = randomizeSequence();
+		prev_sequence = sequence;
     }
 	
 	if(switch_mode.RisingEdge()){
@@ -257,6 +258,7 @@ void inputHandler(){
 		}
         // Temporarily make sequence to scale
         sequence = vector<string>(scale);
+		prev_sequence = sequence;
     }
 
 	/* 
