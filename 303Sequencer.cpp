@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #include <random>
-#include <ctime>
+#include <chrono>
 
 /*
 	Includes:
@@ -47,6 +47,9 @@ float tempo_bpm = 120.f;
 string mode = "HWWHWWW"; // W = Whole step, H = Half step  
 bool active = false;
 bool current_note = true;
+
+chrono::high_resolution_clock::time_point time_at_boot = chrono::high_resolution_clock::now();
+random_device rd;
 
 /*
 	- Steps: Number of steps in the sequence
@@ -202,23 +205,25 @@ vector<string> generateScale(){
  * @brief 
  * Returns a new sequence with the same size as the old one which has
  * randomly generated notes taken from the "scale pool" of notes.
- * The seed is set in "main" based on the current time.
+ * The seed is based on the boot time - the current time, combined
+ * with the value of the random device "rd". Inefficient(?)
  */
 
+mt19937 generateRandomEngine() {
+	auto current_time = chrono::high_resolution_clock::now();
+    unsigned seed = static_cast<unsigned>(chrono::high_resolution_clock::duration(time_at_boot - current_time).count() ^ rd());
+    //unsigned seed = static_cast<unsigned>(programStart.time_since_epoch().count()*100);
+	return mt19937(seed);
+}
+
 vector<string> randomizeSequence(){
+	mt19937 rng = generateRandomEngine();
     vector<string> resulting_sequence(sequence.size()); 
 
     for(int i = 0; i < static_cast<int>(resulting_sequence.size()); i++){    
-        int random_num = rand();
-        int randomIndex = 0;
-		if(mode_int == 0){
-			randomIndex = random_num % all_notes.size();
-        	resulting_sequence[i] = all_notes[randomIndex];
-		}
-		else{
-			randomIndex = random_num % scale.size();
-			resulting_sequence[i] = scale[randomIndex];
-		}
+        uniform_int_distribution<unsigned> distrib(0, scale.size() - 1);
+		int randomIndex = distrib(rng);
+		resulting_sequence[i] = scale[randomIndex];
     }
 
     return resulting_sequence;
@@ -594,7 +599,7 @@ int main(void) {
     /* 
 		Initialize random generator, and start callback.
 	*/
-    srand((unsigned int) time(NULL));
+    
 	hardware.adc.Start(); // Start ADC
     hardware.StartAudio(AudioCallback);
     // Loop forever
