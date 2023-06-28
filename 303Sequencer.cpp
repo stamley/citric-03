@@ -565,13 +565,6 @@ void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
 			out[i] = out[i] * 0.9; // Audio ramp-down
 			out[i + 1] = out[i] * 0.9;
 		}
-    
-		
-		/*
-			This for-loop is not understood yet. Without it, the daisyseed 
-			produces a clicking sound when the sequence is inactive.
-		*/
-		
 }
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size) {
