@@ -288,7 +288,8 @@ bool debounce(GPIO button, bool last_button_state, int counter){
 
 
 /**
- * @brief Activating slide is straight-forward...
+ * @brief 
+ * Activating slide is straight-forward...
  * If the pitch is set to 0, the selected note (seq_buttons[i]) is
  * activated/deactivated 
  * Press slide button before pressing the note in the sequence.
@@ -396,7 +397,8 @@ double getFreqOfNote(string note){
 }
 
 /**
- * @brief Handles negative numbers, true modulo
+ * @brief 
+ * Handles negative numbers, true modulo
  * @param dividend 
  * @param divisor 
  * @return int 
@@ -405,7 +407,7 @@ double getFreqOfNote(string note){
 int modulo(int dividend, int divisor){
 	return (dividend % divisor + divisor) % divisor;
 }
-
+	
 /**
  * @brief 
  * Triggers a note in the sequence, and increases the active step.
@@ -439,7 +441,7 @@ void triggerSequence(){
 /**
  * @brief 
  * Configure and Initialize the Daisy Seed
- * 	These are separate to allow reconfiguration of any of the internal
+ * These are separate to allow reconfiguration of any of the internal
  * components before initialization.
  * Block size refers to the number of samples handled per callback
 */	
@@ -453,7 +455,7 @@ void configureAndInitHardware(){
 
 /**
  * @brief 
- * 	Initialize oscillator for synthesizer, and set initial amplitude
+ * Initialize oscillator for synthesizer, and set initial amplitude
  * to 1.
  */
 
@@ -478,7 +480,8 @@ void initPitchEnv(float samplerate){
 }
 
 /** 
- *	@brief This one will control the kick's volume
+ * @brief 
+ * This one will control the kick's volume
  */
 
 void initVolEnv(float samplerate){
@@ -512,7 +515,6 @@ void initPots(){
 	pots[4].InitSingle(hardware.GetPin(23)); // 30, decay
 	pots[5].InitSingle(hardware.GetPin(18)); // 25, env_mod
 	hardware.adc.Init(pots, NUMBER_OF_POTS); // Set ADC to use our configuration, and how many pots
-	// More pots: https://forum.electro-smith.com/t/adc-reading/541
 }
 
 void initFilter(float samplerate){
@@ -551,21 +553,24 @@ void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
 		prepareAudioBlock(size, out);
 		triggerSequence();
     }
-    else {
-		/*
-			This for-loop is not understood yet. Without it, the daisyseed 
-			produces a clicking sound when the sequence is inactive.
-		*/
-		for(size_t i = 0; i < size; i += 2) {
-			out[i] = out[i] * 0.9;
-			out[i + 1] = out[i] * 0.9;
-		}
-		if(active && tick.Process()){
+    else if(active){
+		prepareAudioBlock(size, out);
+		if(tick.Process()){
 			active_step = (active_step + 1) % steps;
 			current_note = activated_notes[active_step];
 			debug_led.Write(false);
 		}
+		/*
+			This for-loop is not understood yet. Without it, the daisyseed 
+			produces a clicking sound when the sequence is inactive.
+		*/
+		
 	}
+	else
+		for(size_t i = 0; i < size; i += 2) {
+			out[i] = out[i] * 0.9; // Audio ramp-down
+			out[i + 1] = out[i] * 0.9;
+		}
 }
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size) {
