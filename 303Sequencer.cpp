@@ -549,28 +549,29 @@ void initSeqButtons(){
 }
 
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
-	if(active && current_note){
+	if(active) {
 		prepareAudioBlock(size, out);
-		triggerSequence();
-    }
-    else if(active){
-		prepareAudioBlock(size, out);
-		if(tick.Process()){
+		if(current_note)
+			triggerSequence();
+
+		else if (tick.Process()) {
 			active_step = (active_step + 1) % steps;
 			current_note = activated_notes[active_step];
 			debug_led.Write(false);
 		}
-		/*
-			This for-loop is not understood yet. Without it, the daisyseed 
-			produces a clicking sound when the sequence is inactive.
-		*/
-		
 	}
 	else
 		for(size_t i = 0; i < size; i += 2) {
 			out[i] = out[i] * 0.9; // Audio ramp-down
 			out[i + 1] = out[i] * 0.9;
 		}
+    
+		
+		/*
+			This for-loop is not understood yet. Without it, the daisyseed 
+			produces a clicking sound when the sequence is inactive.
+		*/
+		
 }
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size) {
