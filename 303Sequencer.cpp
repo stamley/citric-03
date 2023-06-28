@@ -44,7 +44,7 @@ float env_mod = 0.8;
 float cutoff = 13000.f;
 
 float tempo_bpm = 120.f;
-string mode = "WWHWWWH"; // W = Whole step, H = Half step  
+string mode = "HWWHWWW"; // W = Whole step, H = Half step  
 bool active = false;
 bool current_note = true;
 
@@ -126,9 +126,11 @@ unordered_map<string, vector<double>> notes = {
     {"Bb", {29.14, 58.27, 116.54, 233.08, 466.16, 932.33, 1864.66, 3729.31}},
     {"B", {30.87, 61.74, 123.47, 246.94, 493.88, 987.77, 1975.53, 3951.07}}
 };
-vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
+//vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
+
+vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B","C2"};
+vector<string> scale = all_notes; // Major (Ionian)
 vector<string> sequence (8, scale[0]);
-vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
 vector<bool> slide(8, false);
 vector<bool> activated_notes(8, true);
 
@@ -183,7 +185,7 @@ vector<string> circularShiftLeftArray(vector<string> array){
 
 
 vector<string> generateScale(){
-    vector<string> new_scale(scale.size());
+    vector<string> new_scale(8);
 
     int index = 0;
     size_t notes_collected = 0;
@@ -301,11 +303,11 @@ void handleSequenceButtons(){
 			if(activate_slide.Pressed())
 				slide[i] = !slide[i];
 			else{
-				int pitch = hardware.adc.GetFloat(3) * 8; // 0 - 7
+				int pitch = hardware.adc.GetFloat(3) * scale.size(); // 0 - 7
 				if(pitch == 0)
 					activated_notes[i] = !activated_notes[i];
 				else{
-					sequence[i] = scale[pitch - 1];
+					sequence[i] = scale[pitch];
 					activated_notes[i] = true;
 				}
 			}
@@ -329,19 +331,19 @@ void inputHandler(){
     }
 	
 	if(switch_mode.RisingEdge()){
-        if(mode_int == 8) mode_int = 0;
+        if(mode_int == 7) mode_int = 0;
         else mode_int++;
 
 		if(mode_int != 0){ // not chromatic
         	mode = circularShiftLeft(mode);
 			scale = generateScale();
 		}
+		else scale = all_notes;
         // Temporarily make sequence to scale
         sequence = vector<string>(scale);
     }
 	
 	handleSequenceButtons();
-	
 
 	tempo_bpm = floor((hardware.adc.GetFloat(0) * (HIGH_RANGE_BPM - LOW_RANGE_BPM)) + LOW_RANGE_BPM); // BPM range from 30-300
 	tick.SetFreq(convertBPMtoFreq(tempo_bpm));
