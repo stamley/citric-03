@@ -46,6 +46,7 @@ float cutoff = 13000.f;
 float tempo_bpm = 120.f;
 string mode = "WWHWWWH"; // W = Whole step, H = Half step  
 bool active = false;
+bool current_note = true;
 
 /*
 	- Steps: Number of steps in the sequence
@@ -127,6 +128,7 @@ vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ioni
 vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
 vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
 vector<bool> slide = {false, false, false, false, false, false, false, false};
+vector<bool> activated_notes(8, true);
 
 /*
 	For changing the pitch of the synth. (Could be done easier)
@@ -229,7 +231,41 @@ void increasePitchForActiveNote(){
 	}
 }
 
+vector<bool> last_button_states(8, false);
+vector<int> counters(8, 0);
 
+bool debounce(GPIO button, bool last_button_state, int counter){
+	const int stable_threshold = 13;
+
+	bool button_state = !button.Read();
+	
+	// Check if the button state has changed
+	if (button_state != last_button_state)
+	{
+		// Wait for a short period to filter out noise
+		// std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+		// Read the button state again
+		button_state = !button.Read();
+
+		// Check if the new button state is stable
+		if (button_state == last_button_state)
+		{
+			counter++;
+
+			// Check if the button state has been stable for the threshold
+			if (counter >= stable_threshold) {
+				return button_state;  // Debounced button state
+			}
+		}
+		else
+		{
+			counter = 0;  // Reset the counter if the state changes
+		}
+	}
+
+	last_button_state = button_state;
+}
 
 void inputHandler(){
 	// Filters out noise from button-press.	
@@ -244,7 +280,6 @@ void inputHandler(){
 	if(random_sequence.RisingEdge()){
         active_step = 0;
         sequence = randomizeSequence();
-		prev_sequence = sequence;
     }
 	
 	if(switch_mode.RisingEdge()){
@@ -257,19 +292,27 @@ void inputHandler(){
 		}
         // Temporarily make sequence to scale
         sequence = vector<string>(scale);
-		prev_sequence = sequence;
-    }
-
+    }/*
+	if(hardware.adc.GetFloat(3) * 8 == 0 && !seq_buttons[0].Read())
+		debug_led.Write(true);
+	else
+		debug_led.Write(false);*/
 	/* 
 		Press slide button before pressing the note in the sequence.
 	*/
 	for(int i = 0; i < 8; i++){
-		if(!seq_buttons[i].Read()){
+		//if(!seq_buttons[i].Read()){
+		if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
 			if(activate_slide.Pressed())
 				slide[i] = !slide[i];
 			else{
-				int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
-				sequence[i] = scale[pitch];
+				int pitch = hardware.adc.GetFloat(3) * 8/*scale.size()*/; // 0 - 7
+				if(pitch == 0)
+					activated_notes[i] = !activated_notes[i];
+				else{
+					sequence[i] = scale[pitch];
+					activated_notes[i] = true;
+				}
 			}
 		}
 	}
@@ -308,10 +351,7 @@ void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 		
 		// Blend cutoff with movement based on envelope
 		flt.SetFreq(env_mod * synth_env_out * FILTER_MOVEMENT + cutoff);
-		if(synth_env_out >= 1.1f)
-			debug_led.Write(true);
-		else
-			debug_led.Write(false);
+		
 		sig = dist.Process(flt.Process(osc_out));
 
 		out[i]     = sig;
@@ -361,6 +401,7 @@ void triggerSequence(){
 		
 		// Increase the step in sequence
 		active_step = (active_step + 1) % steps;
+		current_note = activated_notes[active_step];
 	}
 }
 
@@ -469,23 +510,38 @@ void initSeqButtons(){
 }
 
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
-	if(active){
-		prepareAudioBlock(size, out);
-        triggerSequence();
+	//if(activated_notes[active_step]) debug_led.Write(true);
+	if(current_note) debug_led.Write(true);
+	if(active && current_note){
+		//if(activated_notes[active_step]){
+			
+			prepareAudioBlock(size, out);
+        	triggerSequence();
+		//}
+			//active_step = (active_step + 1) % steps;
+
     }
-    else
+    else {
+		for(size_t i = 0; i < size; i += 2) {
+			out[i] = out[i] * 0.9;
+			out[i + 1] = out[i] * 0.9;
+		}
+		if(active && tick.Process()){
+			active_step = (active_step + 1) % steps;
+			current_note = activated_notes[active_step];
+			debug_led.Write(false);
+		} 
         /*
 			This part is not understood yet. Without it, the daisyseed 
 			produces a clicking sound when the sequence is inactive.
 		*/
-        for(size_t i = 0; i < size; i += 2) {
-            out[i] = 0;
-            out[i + 1] = 0;
-        }
+        	
+	}
 }
 
 void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size)
 {
+	//bool current_note = activated_notes[active_step]; 
 	inputHandler();
 	playSequence(size, out);
 }
