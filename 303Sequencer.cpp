@@ -44,8 +44,9 @@ float env_mod = 0.8;
 float cutoff = 13000.f;
 
 float tempo_bpm = 120.f;
-string mode = "WWHWWWH"; // W = Whole step, H = Half step  
+string mode = "HWWHWWW"; // W = Whole step, H = Half step  
 bool active = false;
+bool current_note = true;
 
 /*
 	- Steps: Number of steps in the sequence
@@ -69,6 +70,8 @@ bool active = false;
 	C is  "C", "D", "E", "F", "G", "A", "B". 
 	This string will be left shifted to the left to change the mode.
 	- active: True/False if the sequencer is active or not. 
+	- current_note: Will change based on array "activated_notes" and determine
+	if the current step should be played or not. Only updated each tick.
 */
 
 DaisySeed hardware;
@@ -123,14 +126,18 @@ unordered_map<string, vector<double>> notes = {
     {"Bb", {29.14, 58.27, 116.54, 233.08, 466.16, 932.33, 1864.66, 3729.31}},
     {"B", {30.87, 61.74, 123.47, 246.94, 493.88, 987.77, 1975.53, 3951.07}}
 };
-vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
-vector<string> sequence = {scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0], scale[0]};
-vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B", "C2"};
-vector<bool> slide = {false, false, false, false, false, false, false, false};
+//vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
 
-/*
-	For changing the pitch of the synth. (Could be done easier)
-*/
+vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B","C2"};
+vector<string> scale = all_notes; // Major (Ionian)
+vector<string> sequence (8, scale[0]);
+vector<bool> slide(8, false);
+vector<bool> activated_notes(8, true);
+
+/**
+ * @brief
+ * 	For changing the pitch of the synth. (Could be done easier)
+ */
 
 void setPitch(double freq){
     synthPitchEnv.SetMax(freq);
@@ -143,9 +150,10 @@ void setSlide(double note, double note_before){
 	synthPitchEnv.SetTime(ADENV_SEG_DECAY, static_cast<float>(60/tempo_bpm));
 }
 
-/*
-	Shifts the mode string to the left one step. "WWHWWWH" becomes "WHWWWHW"
-*/
+/**
+ * @brief 
+ * Shifts the mode string to the left one step. "WWHWWWH" becomes "WHWWWHW"
+ */
 
 string circularShiftLeft(string mode) {
     char first = mode[0];
@@ -153,12 +161,13 @@ string circularShiftLeft(string mode) {
     return mode += first;
 }
 
-/*
-	Shifts the array of all notes if the root note is to be changed.
-	Then the modes will be taken from a "new pool" starting with a new 
-	root note.
-*/
-
+/**
+ * @brief 
+ * Shifts the array of all notes if the root note is to be changed.
+ * Then the modes will be taken from a "new pool" starting with a new 
+ * root note.
+ */
+	
 vector<string> circularShiftLeftArray(vector<string> array){
     vector<string> new_array(array);
     rotate(new_array.begin(), new_array.begin() + 1, new_array.end());
@@ -166,15 +175,17 @@ vector<string> circularShiftLeftArray(vector<string> array){
 }
 
 
-/*
-	Generates a new scale based on the current one. This function will
-	insert notes into the global "scale" variable based on the steps in
-	the "mode" string. If there is a "W" (whole-step) it will "jump" two
-	steps, "semi-tones", in the all_notes array, otherwise just one step.
-*/
+/**
+ * @brief 
+ * 	Generates a new scale based on the current one. This function will
+ * 	insert notes into the global "scale" variable based on the steps in
+ * the "mode" string. If there is a "W" (whole-step) it will "jump" two
+ * steps, "semi-tones", in the all_notes array, otherwise just one step.
+ */
+
 
 vector<string> generateScale(){
-    vector<string> new_scale(scale.size());
+    vector<string> new_scale(8);
 
     int index = 0;
     size_t notes_collected = 0;
@@ -187,11 +198,12 @@ vector<string> generateScale(){
     return new_scale;      
 }
 
-/*
-	Returns a new sequence with the same size as the old one which has
-	randomly generated notes taken from the "scale pool" of notes.
-	The seed is set in "main" based on the current time.
-*/
+/**
+ * @brief 
+ * Returns a new sequence with the same size as the old one which has
+ * randomly generated notes taken from the "scale pool" of notes.
+ * The seed is set in "main" based on the current time.
+ */
 
 vector<string> randomizeSequence(){
     vector<string> resulting_sequence(sequence.size()); 
@@ -229,7 +241,79 @@ void increasePitchForActiveNote(){
 	}
 }
 
+/*
+	Global variables for checking the last states of the sequencer
+	buttons and the counters for each.
+*/
 
+vector<bool> last_button_states(8, false);
+vector<int> counters(8, 0);
+
+/**
+ * @brief When the button is active for a certain amount of cycles 
+ * (stable_threshold) the press is considered valid and used.
+ * 
+ */
+
+bool debounce(GPIO button, bool last_button_state, int counter){
+	const int stable_threshold = 13;
+
+	bool button_state = !button.Read();
+	
+	// Check if the button state has changed
+	if (button_state != last_button_state)
+	{
+		// Wait for a short period to filter out noise
+		// std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+		// Read the button state again
+		button_state = !button.Read();
+
+		// Check if the new button state is stable
+		if (button_state == last_button_state)
+		{
+			counter++;
+
+			// Check if the button state has been stable for the threshold
+			if (counter >= stable_threshold) {
+				return button_state;  // Debounced button state
+			}
+		}
+		else
+		{
+			counter = 0;  // Reset the counter if the state changes
+		}
+	}
+
+	last_button_state = button_state;
+}
+
+
+/**
+ * @brief 
+ * Activating slide is straight-forward...
+ * If the pitch is set to 0, the selected note (seq_buttons[i]) is
+ * activated/deactivated 
+ * Press slide button before pressing the note in the sequence.
+ */
+
+void handleSequenceButtons(){
+	for(int i = 0; i < 8; i++){
+		if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
+			if(activate_slide.Pressed())
+				slide[i] = !slide[i];
+			else{
+				int pitch = hardware.adc.GetFloat(3) * scale.size(); // 0 - 7
+				if(pitch == 0)
+					activated_notes[i] = !activated_notes[i];
+				else{
+					sequence[i] = scale[pitch];
+					activated_notes[i] = true;
+				}
+			}
+		}
+	}
+}
 
 void inputHandler(){
 	// Filters out noise from button-press.	
@@ -247,36 +331,24 @@ void inputHandler(){
     }
 	
 	if(switch_mode.RisingEdge()){
-        if(mode_int == 8) mode_int = 0;
+        if(mode_int == 7) mode_int = 0;
         else mode_int++;
 
 		if(mode_int != 0){ // not chromatic
         	mode = circularShiftLeft(mode);
 			scale = generateScale();
 		}
+		else scale = all_notes;
         // Temporarily make sequence to scale
         sequence = vector<string>(scale);
     }
-
-	/* 
-		Press slide button before pressing the note in the sequence.
-	*/
-	for(int i = 0; i < 8; i++){
-		if(!seq_buttons[i].Read()){
-			if(activate_slide.Pressed())
-				slide[i] = !slide[i];
-			else{
-				int pitch = static_cast<int>(hardware.adc.GetFloat(3) * (scale.size())); // 0 - 7
-				sequence[i] = scale[pitch];
-			}
-		}
-	}
+	
+	handleSequenceButtons();
 
 	tempo_bpm = floor((hardware.adc.GetFloat(0) * (HIGH_RANGE_BPM - LOW_RANGE_BPM)) + LOW_RANGE_BPM); // BPM range from 30-300
 	tick.SetFreq(convertBPMtoFreq(tempo_bpm));
 	
 	cutoff = hardware.adc.GetFloat(1) * (CUTOFF_MAX - CUTOFF_MIN) + CUTOFF_MIN;
-	//flt.SetFreq(cutoff);
 
 	float resonance = hardware.adc.GetFloat(2) * (MAX_RESONANCE); // 0 - 0.89
 	flt.SetRes(resonance);
@@ -287,10 +359,12 @@ void inputHandler(){
 	env_mod = hardware.adc.GetFloat(5) * 1.0;
 }	
 
-/*
-	Prepares the sample for the output audio. 
-	This doesn't really make much sense to me yet.
-*/
+/**
+ * @brief 
+ * Prepares the sample for the output audio. 
+ * Signal processing is difficult...
+ */
+	
 
 void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 	float osc_out, synth_env_out, sig;
@@ -306,10 +380,7 @@ void prepareAudioBlock(size_t size, AudioHandle::InterleavingOutputBuffer out){
 		
 		// Blend cutoff with movement based on envelope
 		flt.SetFreq(env_mod * synth_env_out * FILTER_MOVEMENT + cutoff);
-		if(synth_env_out >= 1.1f)
-			debug_led.Write(true);
-		else
-			debug_led.Write(false);
+		
 		sig = dist.Process(flt.Process(osc_out));
 
 		out[i]     = sig;
@@ -327,20 +398,26 @@ double getFreqOfNote(string note){
 	return current_freq;
 }
 
-/*
-	Handles negative numbers, true modulo
-*/
+/**
+ * @brief 
+ * Handles negative numbers, true modulo
+ * @param dividend 
+ * @param divisor 
+ * @return int 
+ */
 
 int modulo(int dividend, int divisor){
 	return (dividend % divisor + divisor) % divisor;
 }
-
-/*
-	Triggers a note in the sequence, and increases the active step.
-	If the active step is at the last place, and the synth is at the first 
-	mode it wants to access the C note one octave above (one place forward
-	in the map with frequencies for each note).
-*/
+	
+/**
+ * @brief 
+ * Triggers a note in the sequence, and increases the active step.
+ * If the active step is at the last place, and the synth is at the first 
+ * mode it wants to access the C note one octave above (one place forward
+ * in the map with frequencies for each note).
+ */
+	
 
 void triggerSequence(){
 	if(tick.Process()){
@@ -357,17 +434,19 @@ void triggerSequence(){
 		synthVolEnv.Trigger();
 		synthPitchEnv.Trigger();
 		
-		// Increase the step in sequence
+		// Increase the step in sequence, and set the next current note
 		active_step = (active_step + 1) % steps;
+		current_note = activated_notes[active_step];
 	}
 }
 
-/* 
-	Configure and Initialize the Daisy Seed
-	These are separate to allow reconfiguration of any of the internal
-	components before initialization.
-	Block size refers to the number of samples handled per callback
-*/
+/**
+ * @brief 
+ * Configure and Initialize the Daisy Seed
+ * These are separate to allow reconfiguration of any of the internal
+ * components before initialization.
+ * Block size refers to the number of samples handled per callback
+*/	
 
 void configureAndInitHardware(){
 	hardware.Configure();
@@ -376,10 +455,11 @@ void configureAndInitHardware(){
 	//hardware.SetAudioSampleRate(SaiHandle::Config::SampleRate::SAI_48KHZ);
 }
 
-/*
-	Initialize oscillator for synthesizer, and set initial amplitude
-	to 1.
-*/
+/**
+ * @brief 
+ * Initialize oscillator for synthesizer, and set initial amplitude
+ * to 1.
+ */
 
 void initOscillator(float samplerate){
     osc.Init(samplerate);
@@ -387,10 +467,11 @@ void initOscillator(float samplerate){
     osc.SetAmp(1);
 }
 
-/*
-	This envelope will control the kick oscillator's pitch
-	Note that this envelope is much faster than the volume
-*/
+/**
+ * @brief 
+ * This envelope will control the kick oscillator's pitch
+ * Note that this envelope is much faster than the volume
+ */
 
 void initPitchEnv(float samplerate){	
     synthPitchEnv.Init(samplerate);
@@ -400,9 +481,10 @@ void initPitchEnv(float samplerate){
     synthPitchEnv.SetMin(400);
 }
 
-/*
-	This one will control the kick's volume
-*/
+/** 
+ * @brief 
+ * This one will control the kick's volume
+ */
 
 void initVolEnv(float samplerate){
 	synthVolEnv.Init(samplerate);
@@ -412,11 +494,13 @@ void initVolEnv(float samplerate){
     synthVolEnv.SetMin(0);
 }
 
- /*
-	Initialize the buttons on pins 28, 27 and 25. (35, 34, 32 on the
-	daisy seed.)
-	The callback rate is samplerate / blocksize (48)
-*/
+ /**
+  * @brief 
+  * Initialize the buttons on pins 28, 27 and 25. (35, 34, 32 on the
+  * daisy seed.)
+  * The callback rate is samplerate / blocksize (48)
+  */
+	
 
 void initButtons(float samplerate){
 	activate_sequence.Init(hardware.GetPin(28), samplerate / 48.f); // 35
@@ -433,7 +517,6 @@ void initPots(){
 	pots[4].InitSingle(hardware.GetPin(23)); // 30, decay
 	pots[5].InitSingle(hardware.GetPin(18)); // 25, env_mod
 	hardware.adc.Init(pots, NUMBER_OF_POTS); // Set ADC to use our configuration, and how many pots
-	// More pots: https://forum.electro-smith.com/t/adc-reading/541
 }
 
 void initFilter(float samplerate){
@@ -442,11 +525,12 @@ void initFilter(float samplerate){
 	flt.SetFreq(700);
 }
 
-/*
-	Initialize Metro object at bpm (ex 120) divided by 60 resulting 
-	in the freq for a note for each 4th beat. Multiply by 4 to get 
-	for each beat.
-*/
+/**
+ * @brief 
+ * Initialize Metro object at bpm (ex 120) divided by 60 resulting 
+ * in the freq for a note for each 4th beat. Multiply by 4 to get 
+ * for each beat.
+*/	
 
 void initTick(float samplerate){
     tick.Init((tempo_bpm / 60.f)*4.f, samplerate);
@@ -467,23 +551,25 @@ void initSeqButtons(){
 }
 
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
-	if(active){
+	if(active) {
 		prepareAudioBlock(size, out);
-        triggerSequence();
-    }
-    else
-        /*
-			This part is not understood yet. Without it, the daisyseed 
-			produces a clicking sound when the sequence is inactive.
-		*/
-        for(size_t i = 0; i < size; i += 2) {
-            out[i] = 0;
-            out[i + 1] = 0;
-        }
+		if(current_note)
+			triggerSequence();
+
+		else if (tick.Process()) {
+			active_step = (active_step + 1) % steps;
+			current_note = activated_notes[active_step];
+			debug_led.Write(false);
+		}
+	}
+	else
+		for(size_t i = 0; i < size; i += 2) {
+			out[i] = out[i] * 0.9; // Audio ramp-down
+			out[i + 1] = out[i] * 0.9;
+		}
 }
 
-void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size)
-{
+void AudioCallback(AudioHandle::InterleavingInputBuffer in, AudioHandle::InterleavingOutputBuffer out, size_t size) {
 	inputHandler();
 	playSequence(size, out);
 }
