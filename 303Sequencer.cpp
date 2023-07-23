@@ -25,7 +25,7 @@ int steps = 8;
 int active_step = 0;
 int mode_int = 0;
 int selected_note = 0;
-int const NUMBER_OF_POTS = 6;
+int const NUMBER_OF_POTS = 7;
 
 int const LOW_RANGE_BPM = 30;
 int const HIGH_RANGE_BPM = 330;
@@ -362,6 +362,7 @@ void inputHandler(){
 	synthVolEnv.SetTime(ADENV_SEG_DECAY, decay);
 	
 	env_mod = hardware.adc.GetFloat(5) * 1.0;
+	dist.SetDrive(hardware.adc.GetFloat(6));
 }	
 
 /**
@@ -521,6 +522,7 @@ void initPots(){
 	pots[3].InitSingle(hardware.GetPin(22)); // 29, note pitch
 	pots[4].InitSingle(hardware.GetPin(23)); // 30, decay
 	pots[5].InitSingle(hardware.GetPin(18)); // 25, env_mod
+	pots[6].InitSingle(hardware.GetPin(16)); // 23, env_mod
 	hardware.adc.Init(pots, NUMBER_OF_POTS); // Set ADC to use our configuration, and how many pots
 }
 
