@@ -79,7 +79,7 @@ random_device rd;
 
 DaisySeed hardware;
 Oscillator osc;
-MoogLadder flt; 
+infrasonic::MoogLadder flt; 
 Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
 Switch activate_sequence, random_sequence, switch_mode, activate_slide;
