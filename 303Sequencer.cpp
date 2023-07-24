@@ -6,20 +6,43 @@
 #include <random>
 #include <chrono>
 
-/*
-	Includes:
-	- Map is for the storage of the notes, key - value pairs for
-	notes and their corresponding frequencies from low to high.
-	- Vector = Array
-	- Random is used for generating a random sequence of notes in a
-	specified scale.
-		- Time is for seeding the random generator
-*/
-
 using namespace daisy;
 using namespace daisysp;
 using namespace std;
 
+/*
+	- Steps: Number of steps in the sequence
+	- Active_step: The current active step, is incremented for each played
+	note
+	- mode_int: An integer corresponding to the current mode, i.e:
+	Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian or Locrian.
+	Might not be needed in the current implementation.
+	- selected_note: which note in the sequence is currently selected (0-7 range)
+	- page_adder: if the second "page" is selected, which are the other 8 beats 
+	ranging from 9 - 16, the page_adder is equal to 8. This will be added in the
+	"handle_sequence_buttons" function, which will then refer to the correct note
+
+	- LOW_RANGE/HIGH_RANGE: Constants for BPM range for the BPM input potentiometer.
+	- CUTOFF_MAX/CUTOFF_MIN: Range for cutoff potentiometer
+	- DECAY_MAX/DECAY_MIN: Range for the decay potentiometer.
+	- MAX_RESONANCE: The maximum value for the resonance potentiometer.
+	- FILTER_MOVEMENT: How much the filter will move with each note.
+	Thought this will correspond to amount in frequency, but not sure
+
+	- env_mod: Variable for env_mod potentiometer.
+	- cutoff: Variable for cutoff potentiometer.
+	- tempo_bpm: The current tempo of the sequencer.
+
+	- mode: This string specifies the steps for the scale going from the 
+	root note upwards. It starts from the major scale (Ionian), which for
+	C is  "C", "D", "E", "F", "G", "A", "B". 
+	This string will be left shifted to the left to change the mode.
+	- active: True/False if the sequencer is active or not. 
+	- current_note: Will change based on array "activated_notes" and determine
+	if the current step should be played or not. Only updated each tick.
+
+	- time_at_boot: Used as first seed for random generator.
+*/
 
 int const steps = 16;
 int active_step = 0;
@@ -44,55 +67,14 @@ int const FILTER_MOVEMENT = 11000;
 
 float env_mod = 0.8;
 float cutoff = 13000.f;
-
 float tempo_bpm = 120.f;
+
 string mode = "HWWHWWW"; // W = Whole step, H = Half step  
 bool active = false;
 bool current_note = true;
 
 chrono::high_resolution_clock::time_point time_at_boot = chrono::high_resolution_clock::now();
 random_device rd;
-
-/*
-	- Steps: Number of steps in the sequence
-	- Active_step: The current active step, is incremented for each played
-	note
-	- mode_int: An integer corresponding to the current mode, i.e:
-	Ionian, Dorian, Phrygian, Lydian, Mixolydian, Aeolian or Locrian.
-	Might not be needed in the current implementation.
-	- selected_note: which note in the sequence is currently selected (0-7 range)
-	- LOW_RANGE/HIGH_RANGE: Constants for BPM range for the BPM input potentiometer.
-	- CUTOFF_MAX/CUTOFF_MIN: Range for cutoff potentiometer
-	- FILTER_MOVEMENT: How much the filter will move with each note.
-	Thought this will correspond to amount in frequency, but not sure
-	- DECAY_MAX/DECAY_MIN: Range for the decay potentiometer.
-	- MAX_RESONANCE: The maximum value for the resonance potentiometer.
-	- env_mod: Variable for env_mod potentiometer.
-	- cutoff: Variable for cutoff potentiometer.
-	- tempo_bpm: The current tempo of the sequencer.
-	- mode: This string specifies the steps for the scale going from the 
-	root note upwards. It starts from the major scale (Ionian), which for
-	C is  "C", "D", "E", "F", "G", "A", "B". 
-	This string will be left shifted to the left to change the mode.
-	- active: True/False if the sequencer is active or not. 
-	- current_note: Will change based on array "activated_notes" and determine
-	if the current step should be played or not. Only updated each tick.
-*/
-
-DaisySeed hardware;
-Oscillator osc;
-infrasonic::MoogLadder flt; 
-//daisysp::MoogLadder flt;
-Overdrive dist;
-AdEnv synthVolEnv, synthPitchEnv;
-Switch activate_sequence, random_sequence, switch_mode, activate_slide, change_page;
-AdcChannelConfig pots[NUMBER_OF_POTS]; // tempo, cut-off, resonance, pitch, decay, env_mod
-Metro tick;
-GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
-//GPIO change_page;
-vector<GPIO> seq_buttons(8);
-
-GPIO debug_led;
 
 /*
 	- Hardware starts audio and controls daisy seed functionality.
@@ -109,16 +91,41 @@ GPIO debug_led;
 		their pitch changed.
 		- change_pitch: increase the pitch by one step, based on scale, 
 		goes back around when reaching maximum
-	- AdcChannelConfig (pots):
-		- change_bpm: Gradualy change bpm from 30 - 300 (?)
+	- AdcChannelConfig (pots): Array storing all the pot variables, 
+	currently holding: 	tempo, cut-off, resonance, pitch, decay, env_mod, dist
+	- seq_buttons: GPIO Buttons for each note in the sequence, used to control
+	the pitch and glide for notes, aswell if they are active or not.
+	
 	- Tick for keeping time using the tick.process() function, returning
 	true when a tick is "active". The tick is set to a specific interval
 	and is activated as long as the AudioCallback (infinite loop) is active.
-	- seq_buttons: Buttons for each note in the sequence, used to control
-	the pitch for each note.
+	
 */
 
+DaisySeed hardware;
+Oscillator osc;
+infrasonic::MoogLadder flt; 
+//daisysp::MoogLadder flt;
+Overdrive dist;
+AdEnv synthVolEnv, synthPitchEnv;
 
+Switch activate_sequence, random_sequence, switch_mode, activate_slide, change_page;
+AdcChannelConfig pots[NUMBER_OF_POTS];
+GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
+vector<GPIO> seq_buttons(8);
+
+Metro tick;
+
+GPIO debug_led;
+
+/*
+	- notes: map for storage of the notes, key - value pairs for
+	notes and their corresponding frequencies from low to high
+	- all_notes: specifiying each note avaialable, aswell as one 
+	octave of the root note. Root note is basicaly only relevant
+	when the mode button is used. It will currently be in relation 
+	to C. Changing the root 
+*/
 unordered_map<string, vector<double>> notes = {
     {"C", {16.35, 32.70, 65.41, 130.81, 261.63, 523.25, 1046.50, 2093.00, 4186.01}},
     {"Db", {17.32, 34.65, 69.30, 138.59, 277.18, 554.37, 1108.73, 2217.46, 4434.92}},
@@ -133,7 +140,6 @@ unordered_map<string, vector<double>> notes = {
     {"Bb", {29.14, 58.27, 116.54, 233.08, 466.16, 932.33, 1864.66, 3729.31}},
     {"B", {30.87, 61.74, 123.47, 246.94, 493.88, 987.77, 1975.53, 3951.07}}
 };
-//vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
 
 vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B","C2"};
 vector<string> scale = all_notes; // Chromatic
