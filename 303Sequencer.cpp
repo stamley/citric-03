@@ -21,10 +21,12 @@ using namespace daisysp;
 using namespace std;
 
 
-int steps = 8;
+int steps = 16;
 int active_step = 0;
 int mode_int = 0;
 int selected_note = 0;
+bool page_adder = 0;
+
 int const NUMBER_OF_POTS = 7;
 
 int const LOW_RANGE_BPM = 30;
@@ -86,6 +88,7 @@ Switch activate_sequence, random_sequence, switch_mode, activate_slide;
 AdcChannelConfig pots[NUMBER_OF_POTS]; // tempo, cut-off, resonance, pitch, decay, env_mod
 Metro tick;
 GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
+GPIO change_page;
 vector<GPIO> seq_buttons(8);
 
 GPIO debug_led;
@@ -132,10 +135,10 @@ unordered_map<string, vector<double>> notes = {
 //vector<string> scale = {"C", "D", "E", "F", "G", "A", "B", "C2"}; // Major (Ionian)
 
 vector<string> all_notes = {"C","Db","D","Eb","E","F","Gb","G","Ab","A","Bb","B","C2"};
-vector<string> scale = all_notes; // Major (Ionian)
-vector<string> sequence (8, scale[0]);
-vector<bool> slide(8, false);
-vector<bool> activated_notes(8, true);
+vector<string> scale = all_notes; // Chromatic
+vector<string> sequence (steps, scale[0]);
+vector<bool> slide(steps, false);
+vector<bool> activated_notes(steps, true);
 
 /**
  * @brief
@@ -303,24 +306,32 @@ bool debounce(GPIO button, bool last_button_state, int counter){
  */
 
 void handleSequenceButtons(){
-	for(int i = 0; i < 8; i++){
+	for(int i = 0; i < 8; i++){ // 8 = number of buttons
 		if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
 			if(activate_slide.Pressed())
-				slide[i] = !slide[i];
+				slide[i + page_adder] = !slide[i + page_adder];
 			else{
 				int pitch = hardware.adc.GetFloat(3) * scale.size(); // 0 - 7
 				if(pitch == 0)
-					activated_notes[i] = !activated_notes[i];
+					activated_notes[i + page_adder] = !activated_notes[i + page_adder];
 				else{
-					sequence[i] = scale[pitch];
-					activated_notes[i] = true;
+					sequence[i + page_adder] = scale[pitch];
+					activated_notes[i + page_adder] = true;
 				}
 			}
 		}
 	}
 }
 
+bool last_page_button_state = false;
+int page_button_counter = 0;
+
 void inputHandler(){
+	if(page_adder == 0)
+		debug_led.Write(false);
+	else
+		debug_led.Write(true);
+
 	// Filters out noise from button-press.	
 	activate_sequence.Debounce();
 	random_sequence.Debounce();
@@ -363,6 +374,9 @@ void inputHandler(){
 	
 	env_mod = hardware.adc.GetFloat(5) * 1.0;
 	dist.SetDrive(hardware.adc.GetFloat(6));
+
+	if(debounce(change_page, last_page_button_state, page_button_counter))
+		page_adder = page_adder == 8 ? 0 : 8; // cycles between 8 or 0
 }	
 
 /**
@@ -566,7 +580,6 @@ void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
 		else if (tick.Process()) {
 			active_step = (active_step + 1) % steps;
 			current_note = activated_notes[active_step];
-			debug_led.Write(false);
 		}
 	}
 	else
@@ -596,6 +609,7 @@ int main(void) {
 	initSeqButtons();
 	dist.SetDrive(0.5);
 	
+	change_page.Init(daisy::seed::D5, GPIO::Mode::INPUT);
 	debug_led.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
     
     /* 
