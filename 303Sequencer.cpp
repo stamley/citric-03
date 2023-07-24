@@ -25,7 +25,7 @@ int steps = 16;
 int active_step = 0;
 int mode_int = 0;
 int selected_note = 0;
-bool page_adder = 0;
+int page_adder = 0;
 
 int const NUMBER_OF_POTS = 7;
 
@@ -84,11 +84,11 @@ Oscillator osc;
 infrasonic::MoogLadder flt; 
 Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
-Switch activate_sequence, random_sequence, switch_mode, activate_slide;
+Switch activate_sequence, random_sequence, switch_mode, activate_slide, change_page;
 AdcChannelConfig pots[NUMBER_OF_POTS]; // tempo, cut-off, resonance, pitch, decay, env_mod
 Metro tick;
 GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
-GPIO change_page;
+//GPIO change_page;
 vector<GPIO> seq_buttons(8);
 
 GPIO debug_led;
@@ -323,23 +323,28 @@ void handleSequenceButtons(){
 	}
 }
 
-bool last_page_button_state = false;
-int page_button_counter = 0;
+//bool last_page_button_state = false;
+//int page_button_counter = 0;
 
 void inputHandler(){
+	
 	if(page_adder == 0)
 		debug_led.Write(false);
 	else
 		debug_led.Write(true);
-
+	
 	// Filters out noise from button-press.	
 	activate_sequence.Debounce();
 	random_sequence.Debounce();
 	switch_mode.Debounce();
 	activate_slide.Debounce();
-
+	change_page.Debounce();
+	
 	if(activate_sequence.RisingEdge())
         active = !active;
+
+	if(change_page.RisingEdge())
+		page_adder = (page_adder + 8) % 16; // cycles between 8 or 0
 
 	if(random_sequence.RisingEdge()){
         active_step = 0;
@@ -358,7 +363,10 @@ void inputHandler(){
         // Temporarily make sequence to scale
         sequence = vector<string>(scale);
     }
+	//if(debounce(change_page, last_page_button_state, page_button_counter))
+	//	page_adder = (page_adder + 8) % 16; // cycles between 8 or 0
 	
+
 	handleSequenceButtons();
 
 	tempo_bpm = floor((hardware.adc.GetFloat(0) * (HIGH_RANGE_BPM - LOW_RANGE_BPM)) + LOW_RANGE_BPM); // BPM range from 30-300
@@ -373,10 +381,7 @@ void inputHandler(){
 	synthVolEnv.SetTime(ADENV_SEG_DECAY, decay);
 	
 	env_mod = hardware.adc.GetFloat(5) * 1.0;
-	dist.SetDrive(hardware.adc.GetFloat(6));
-
-	if(debounce(change_page, last_page_button_state, page_button_counter))
-		page_adder = page_adder == 8 ? 0 : 8; // cycles between 8 or 0
+	dist.SetDrive(hardware.adc.GetFloat(6) * 0.7);
 }	
 
 /**
@@ -527,6 +532,7 @@ void initButtons(float samplerate){
     random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
     switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
 	activate_slide.Init(hardware.GetPin(15), samplerate / 48.f); // 22
+	change_page.Init(hardware.GetPin(26), samplerate / 48.f);
 }
 
 void initPots(){
@@ -609,7 +615,7 @@ int main(void) {
 	initSeqButtons();
 	dist.SetDrive(0.5);
 	
-	change_page.Init(daisy::seed::D5, GPIO::Mode::INPUT);
+	//change_page.Init(daisy::seed::D5, GPIO::Mode::INPUT);
 	debug_led.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
     
     /* 
