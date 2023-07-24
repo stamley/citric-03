@@ -21,7 +21,7 @@ using namespace daisysp;
 using namespace std;
 
 
-int steps = 16;
+int const steps = 16;
 int active_step = 0;
 int mode_int = 0;
 int selected_note = 0;
@@ -82,6 +82,7 @@ random_device rd;
 DaisySeed hardware;
 Oscillator osc;
 infrasonic::MoogLadder flt; 
+//daisysp::MoogLadder flt;
 Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
 Switch activate_sequence, random_sequence, switch_mode, activate_slide, change_page;
@@ -195,7 +196,7 @@ vector<string> generateScale(){
 
     int index = 0;
     size_t notes_collected = 0;
-    while (notes_collected < steps)
+    while (notes_collected < 8)
     {
         new_scale[notes_collected] = all_notes[index % all_notes.size()];
         index += (mode[notes_collected] == 'W') ? 2 : 1;
@@ -221,7 +222,7 @@ mt19937 generateRandomEngine() {
 
 vector<string> randomizeSequence(){
 	mt19937 rng = generateRandomEngine();
-    vector<string> resulting_sequence(sequence.size()); 
+    vector<string> resulting_sequence(sequence.size());
 
     for(int i = 0; i < static_cast<int>(resulting_sequence.size()); i++){    
         uniform_int_distribution<unsigned> distrib(0, scale.size() - 1);
@@ -328,10 +329,11 @@ void handleSequenceButtons(){
 
 void inputHandler(){
 	
-	if(page_adder == 0)
+	/*if(page_adder == 0)
 		debug_led.Write(false);
 	else
-		debug_led.Write(true);
+		debug_led.Write(true);*/
+	debug_led.Write((active_step + 1) & 0x1);
 	
 	// Filters out noise from button-press.	
 	activate_sequence.Debounce();
@@ -360,8 +362,12 @@ void inputHandler(){
 			scale = generateScale();
 		}
 		else scale = all_notes;
-        // Temporarily make sequence to scale
-        sequence = vector<string>(scale);
+
+        // Temporarily fill sequence with notes from scale.
+		for(size_t i = 0; i < steps; i++)
+			sequence[i] = scale[i % scale.size()];
+
+		
     }
 	//if(debounce(change_page, last_page_button_state, page_button_counter))
 	//	page_adder = (page_adder + 8) % 16; // cycles between 8 or 0
