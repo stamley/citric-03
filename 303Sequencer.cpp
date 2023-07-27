@@ -61,7 +61,7 @@ int const CUTOFF_MIN = 0;
 float const DECAY_MAX = 0.9;
 float const DECAY_MIN = 0.01;
 
-float const MAX_RESONANCE = 0.89;
+float const MAX_RESONANCE = 0.89; // old: 0.89
 
 int const FILTER_MOVEMENT = 11000;
 
@@ -104,8 +104,8 @@ random_device rd;
 
 DaisySeed hardware;
 Oscillator osc;
-infrasonic::MoogLadder flt; 
-//daisysp::MoogLadder flt;
+//infrasonic::MoogLadder flt; 
+MoogLadder flt;
 Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
 
