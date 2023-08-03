@@ -313,8 +313,9 @@ bool debounce(GPIO button, bool last_button_state, int counter){
  */
 
 void handleSequenceButtons(){
-	for(int i = 0; i < 8; i++){ // 8 = number of buttons
-		if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
+	for(int i = 0; i < 1; i++){ // 8 = number of buttons
+		//if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
+		if(!seq_buttons[i].Read()){
 			if(activate_slide.Pressed())
 				slide[i + page_adder] = !slide[i + page_adder];
 			else{
@@ -577,14 +578,14 @@ void initTick(float samplerate){
 
 
 void initSeqButtons(){
-	seq_button1.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button2.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button3.Init(daisy::seed::D9, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button4.Init(daisy::seed::D10, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button5.Init(daisy::seed::D11, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button6.Init(daisy::seed::D12, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button7.Init(daisy::seed::D13, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button8.Init(daisy::seed::D14, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button1.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button2.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button3.Init(daisy::seed::D9, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button4.Init(daisy::seed::D10, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button5.Init(daisy::seed::D11, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button6.Init(daisy::seed::D12, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button7.Init(daisy::seed::D13, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button8.Init(daisy::seed::D14, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
 
 	seq_buttons = {seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8};
 }
