@@ -117,6 +117,8 @@ vector<GPIO> seq_buttons(8);
 Metro tick;
 
 GPIO debug_led;
+GPIO page_led;
+GPIO led_decoder_out1, led_decoder_out2, led_decoder_out3;
 
 /*
 	- notes: map for storage of the notes, key - value pairs for
@@ -315,6 +317,7 @@ bool debounce(GPIO button, bool last_button_state, int counter){
 void handleSequenceButtons(){
 	for(int i = 0; i < 8; i++){ // 8 = number of buttons
 		if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
+		//if(seq_buttons[i].Read()){
 			if(activate_slide.Pressed())
 				slide[i + page_adder] = !slide[i + page_adder];
 			else{
@@ -351,8 +354,10 @@ void inputHandler(){
 	if(activate_sequence.RisingEdge())
         active = !active;
 
-	if(change_page.RisingEdge())
+	if(change_page.RisingEdge()){
 		page_adder = (page_adder + 8) % 16; // cycles between 8 or 0
+		page_led.Write(page_adder);
+	}
 
 	if(random_sequence.RisingEdge()){
         active_step = 0;
@@ -459,6 +464,13 @@ int modulo(int dividend, int divisor){
 void triggerSequence(){
 	if(tick.Process()){
 		// Access the current note in the scale
+		// int adder = page_adder & 8 ? 0x007 : 0x000;
+		// int mask = page_adder ? 15 : 7;
+		bool current_page = !((active_step >> 3) ^ (page_adder >> 3));
+		led_decoder_out1.Write(current_page * (active_step & 0x1));
+		led_decoder_out2.Write(current_page * (active_step & 0x2));
+		led_decoder_out3.Write(current_page * (active_step & 0x4));
+
 		string note = sequence[active_step];
 		double current_freq = getFreqOfNote(note);
 		
@@ -584,7 +596,7 @@ void initSeqButtons(){
 	seq_button5.Init(daisy::seed::D11, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
 	seq_button6.Init(daisy::seed::D12, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
 	seq_button7.Init(daisy::seed::D13, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button8.Init(daisy::seed::D14, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button8.Init(daisy::seed::D14, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
 
 	seq_buttons = {seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8};
 }
@@ -628,7 +640,10 @@ int main(void) {
 	dist.SetDrive(0.5);
 	
 	//change_page.Init(daisy::seed::D5, GPIO::Mode::INPUT);
-	debug_led.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
+	led_decoder_out1.Init(daisy::seed::D4, GPIO::Mode::OUTPUT);
+	led_decoder_out2.Init(daisy::seed::D5, GPIO::Mode::OUTPUT);
+	led_decoder_out3.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
+	page_led.Init(daisy::seed::D3, GPIO::Mode::OUTPUT);
     
     /* 
 		Initialize random generator, and start callback.
