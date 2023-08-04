@@ -263,48 +263,26 @@ void increasePitchForActiveNote(){
 	buttons and the counters for each.
 */
 
-vector<bool> last_button_states(8, false);
-vector<int> counters(8, 0);
 
-/**
- * @brief When the button is active for a certain amount of cycles 
- * (stable_threshold) the press is considered valid and used.
- * 
- */
+chrono::milliseconds lastDebounceTimes[8] = {chrono::milliseconds(0)};
 
-bool debounce(GPIO button, bool last_button_state, int counter){
-	const int stable_threshold = 13;
+// Function to perform software debounce for a button press
+bool debounceButton(GPIO button, chrono::milliseconds &lastDebounceTime) {
+  static const chrono::milliseconds debounceDelay(50); // Set the debounce interval
 
-	bool button_state = !button.Read();
-	
-	// Check if the button state has changed
-	if (button_state != last_button_state)
-	{
-		// Wait for a short period to filter out noise
-		// std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  auto currentMillis = chrono::duration_cast<chrono::milliseconds>(
+    chrono::system_clock::now().time_since_epoch()
+  );
 
-		// Read the button state again
-		button_state = !button.Read();
+  if (currentMillis - lastDebounceTime >= debounceDelay) {
+    lastDebounceTime = currentMillis;
+    if (button.Read()) {
+      return true; // Button press detected and debounced
+    }
+  }
 
-		// Check if the new button state is stable
-		if (button_state == last_button_state)
-		{
-			counter++;
-
-			// Check if the button state has been stable for the threshold
-			if (counter >= stable_threshold) {
-				return button_state;  // Debounced button state
-			}
-		}
-		else
-		{
-			counter = 0;  // Reset the counter if the state changes
-		}
-	}
-
-	last_button_state = button_state;
+  return false; // Button press not detected yet
 }
-
 
 /**
  * @brief 
@@ -317,7 +295,7 @@ bool debounce(GPIO button, bool last_button_state, int counter){
 void handleSequenceButtons(){
 	for(int i = 0; i < 1; i++){ // 8 = number of buttons
 		//if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
-		if(!seq_buttons[i].Read()){
+		if(debounceButton(seq_buttons[i], lastDebounceTimes[i])) {
 			if(activate_slide.Pressed())
 				slide[i + page_adder] = !slide[i + page_adder];
 			else{
@@ -342,7 +320,7 @@ void inputHandler(){
 		debug_led.Write(false);
 	else
 		debug_led.Write(true);*/
-	debug_led.Write((active_step + 1) & 0x1);
+	//debug_led.Write((active_step + 1) & 0x1);
 	
 	// Filters out noise from button-press.	
 	activate_sequence.Debounce();
@@ -382,7 +360,10 @@ void inputHandler(){
     }
 	//if(debounce(change_page, last_page_button_state, page_button_counter))
 	//	page_adder = (page_adder + 8) % 16; // cycles between 8 or 0
+
 	
+	debug_led.Write(seq_button1.Read());
+
 
 	handleSequenceButtons();
 
@@ -466,6 +447,7 @@ void triggerSequence(){
 		// Access the current note in the scale
 		// int adder = page_adder & 8 ? 0x007 : 0x000;
 		// int mask = page_adder ? 15 : 7;
+
 		bool current_page = !((active_step >> 3) ^ (page_adder >> 3));
 		led_decoder_out1.Write(current_page * (active_step & 0x1));
 		led_decoder_out2.Write(current_page * (active_step & 0x2));
@@ -645,6 +627,8 @@ int main(void) {
 	led_decoder_out3.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
 	page_led.Init(daisy::seed::D3, GPIO::Mode::OUTPUT);
     
+	debug_led.Init(daisy::seed::D2, GPIO::Mode::OUTPUT);
+
     /* 
 		Initialize random generator, and start callback.
 	*/
