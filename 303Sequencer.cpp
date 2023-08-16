@@ -353,11 +353,11 @@ bool debounceButton(GPIO button, chrono::milliseconds &lastDebounceTime) {
  */
 
 void handleSequenceButtons(){
-	for(int i = 0; i < 1; i++){ // 8 = number of buttons
+	for(int i = 0; i < 8; i++){ // 8 = number of buttons
 		//if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
 		//if(debounce(seq_buttons[i], last_button_states[i], counters[i])) {
 		if(debounce_shift(seq_buttons[i], last_button_states[i])) {
-			if(activate_slide.Pressed())
+			if(!activate_slide.Pressed())
 				slide[i + page_adder] = !slide[i + page_adder];
 			else{
 				int pitch = hardware.adc.GetFloat(3) * scale.size(); // 0 - 7
@@ -636,14 +636,14 @@ void initTick(float samplerate){
 
 
 void initSeqButtons(){
-	seq_button1.Init(daisy::seed::D1, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
-	seq_button2.Init(daisy::seed::D2, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
-	seq_button3.Init(daisy::seed::D3, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
-	seq_button4.Init(daisy::seed::D4, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
-	seq_button5.Init(daisy::seed::D5, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
-	seq_button6.Init(daisy::seed::D6, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
-	seq_button7.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
-	seq_button8.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button1.Init(daisy::seed::D1, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button2.Init(daisy::seed::D2, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button3.Init(daisy::seed::D3, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button4.Init(daisy::seed::D4, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button5.Init(daisy::seed::D6, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button6.Init(daisy::seed::D5, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button7.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button8.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
 
 	seq_buttons = {seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8};
 }
@@ -687,9 +687,9 @@ int main(void) {
 	dist.SetDrive(0.5);
 	
 	//change_page.Init(daisy::seed::D5, GPIO::Mode::INPUT);
-	led_decoder_out1.Init(daisy::seed::D4, GPIO::Mode::OUTPUT);
-	led_decoder_out2.Init(daisy::seed::D5, GPIO::Mode::OUTPUT);
-	led_decoder_out3.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
+	led_decoder_out1.Init(daisy::seed::D12, GPIO::Mode::OUTPUT);
+	led_decoder_out2.Init(daisy::seed::D13, GPIO::Mode::OUTPUT);
+	led_decoder_out3.Init(daisy::seed::D14, GPIO::Mode::OUTPUT);
 	page_led.Init(daisy::seed::D23, GPIO::Mode::OUTPUT);
     
 	//debug_led.Init(daisy::seed::D2, GPIO::Mode::OUTPUT);
