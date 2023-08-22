@@ -108,15 +108,17 @@ Oscillator osc;
 MoogLadder flt;
 Overdrive dist;
 AdEnv synthVolEnv, synthPitchEnv;
-
-Switch activate_sequence, random_sequence, switch_mode, activate_slide, change_page;
+//Switch activate_sequence, random_sequence, switch_mode, activate_slide, 
+Switch change_page, activate_slide;
+uint16_t activate_state = 0, random_state = 0, switch_state = 0, slide_state = 0;
+GPIO activate_sequence, random_sequence, switch_mode;
 AdcChannelConfig pots[NUMBER_OF_POTS];
 GPIO seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8;
 vector<GPIO> seq_buttons(8);
 
 Metro tick;
 
-GPIO debug_led;
+//GPIO debug_led;
 GPIO page_led;
 GPIO led_decoder_out1, led_decoder_out2, led_decoder_out3;
 
@@ -258,12 +260,28 @@ void increasePitchForActiveNote(){
 	}
 }
 
+bool debounce_shift(GPIO &button, uint16_t &state) {
+  //static uint16_t state = 0;
+  state = (state << 1) | button.Read() | 0xfe00;
+  return (state == 0xff00);
+}
+
+/*
+bool debounce_shift(GPIO button, uint16_t &state) {
+  //static uint16_t state = 0;
+  state = (state << 1) | button.Read() | 0xfe00;
+  return (state == 0xff00);
+}*/
+
+
 /*
 	Global variables for checking the last states of the sequencer
 	buttons and the counters for each.
 */
 
-vector<bool> last_button_states(8, false);
+//vector<bool> last_button_states(8, false);
+//vector<uint16_t> last_button_states(8, 0);
+uint16_t last_button_states[8] = {0};
 vector<int> counters(8, 0);
 
 /**
@@ -273,9 +291,9 @@ vector<int> counters(8, 0);
  */
 
 bool debounce(GPIO button, bool last_button_state, int counter){
-	const int stable_threshold = 13;
+	const int stable_threshold = 360000; // 100 000
 
-	bool button_state = !button.Read();
+	bool button_state = /*!*/button.Read();
 	
 	// Check if the button state has changed
 	if (button_state != last_button_state)
@@ -284,7 +302,7 @@ bool debounce(GPIO button, bool last_button_state, int counter){
 		// std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
 		// Read the button state again
-		button_state = !button.Read();
+		button_state = /*!*/button.Read();
 
 		// Check if the new button state is stable
 		if (button_state == last_button_state)
@@ -303,8 +321,29 @@ bool debounce(GPIO button, bool last_button_state, int counter){
 	}
 
 	last_button_state = button_state;
+	return last_button_state;
 }
 
+
+chrono::milliseconds lastDebounceTimes[8] = {chrono::milliseconds(0)};
+
+// Function to perform software debounce for a button press
+bool debounceButton(GPIO button, chrono::milliseconds &lastDebounceTime) {
+  static const chrono::milliseconds debounceDelay(50); // Set the debounce interval
+
+  auto currentMillis = chrono::duration_cast<chrono::milliseconds>(
+    chrono::system_clock::now().time_since_epoch()
+  );
+
+  if (currentMillis - lastDebounceTime >= debounceDelay) {
+    lastDebounceTime = currentMillis;
+    if (button.Read()) {
+      return true; // Button press detected and debounced
+    }
+  }
+
+  return false; // Button press not detected yet
+}
 
 /**
  * @brief 
@@ -316,9 +355,10 @@ bool debounce(GPIO button, bool last_button_state, int counter){
 
 void handleSequenceButtons(){
 	for(int i = 0; i < 8; i++){ // 8 = number of buttons
-		if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
-		//if(seq_buttons[i].Read()){
-			if(activate_slide.Pressed())
+		//if(debounce(seq_buttons[i], last_button_states[i], counters[i])){
+		//if(debounce(seq_buttons[i], last_button_states[i], counters[i])) {
+		if(debounce_shift(seq_buttons[i], last_button_states[i])) {
+			if(!activate_slide.Pressed())
 				slide[i + page_adder] = !slide[i + page_adder];
 			else{
 				int pitch = hardware.adc.GetFloat(3) * scale.size(); // 0 - 7
@@ -337,21 +377,12 @@ void handleSequenceButtons(){
 //int page_button_counter = 0;
 
 void inputHandler(){
-	
-	/*if(page_adder == 0)
-		debug_led.Write(false);
-	else
-		debug_led.Write(true);*/
-	debug_led.Write((active_step + 1) & 0x1);
-	
 	// Filters out noise from button-press.	
-	activate_sequence.Debounce();
-	random_sequence.Debounce();
-	switch_mode.Debounce();
+	
 	activate_slide.Debounce();
 	change_page.Debounce();
 	
-	if(activate_sequence.RisingEdge())
+	if(debounce_shift(activate_sequence, activate_state))
         active = !active;
 
 	if(change_page.RisingEdge()){
@@ -359,12 +390,12 @@ void inputHandler(){
 		page_led.Write(page_adder);
 	}
 
-	if(random_sequence.RisingEdge()){
+	if(debounce_shift(random_sequence, random_state)){
         active_step = 0;
         sequence = randomizeSequence();
     }
 	
-	if(switch_mode.RisingEdge()){
+	if(debounce_shift(switch_mode, switch_state)){
         if(mode_int == 7) mode_int = 0;
         else mode_int++;
 
@@ -382,7 +413,10 @@ void inputHandler(){
     }
 	//if(debounce(change_page, last_page_button_state, page_button_counter))
 	//	page_adder = (page_adder + 8) % 16; // cycles between 8 or 0
+
 	
+	//debug_led.Write(seq_button1.Read());
+
 
 	handleSequenceButtons();
 
@@ -466,6 +500,7 @@ void triggerSequence(){
 		// Access the current note in the scale
 		// int adder = page_adder & 8 ? 0x007 : 0x000;
 		// int mask = page_adder ? 15 : 7;
+
 		bool current_page = !((active_step >> 3) ^ (page_adder >> 3));
 		led_decoder_out1.Write(current_page * (active_step & 0x1));
 		led_decoder_out2.Write(current_page * (active_step & 0x2));
@@ -552,21 +587,27 @@ void initVolEnv(float samplerate){
 	
 
 void initButtons(float samplerate){
-	activate_sequence.Init(hardware.GetPin(28), samplerate / 48.f); // 35
-    random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
-    switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
+	//activate_sequence.Init(hardware.GetPin(28), samplerate / 48.f); // 35
+    //random_sequence.Init(hardware.GetPin(27), samplerate / 48.f); // 34
+    //switch_mode.Init(hardware.GetPin(25), samplerate / 48.f); // 32
+	
+	activate_sequence.Init(daisy::seed::D9, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	random_sequence.Init(daisy::seed::D10, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	switch_mode.Init(daisy::seed::D11, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	//activate_slide.Init(daisy::seed::D15, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+
 	activate_slide.Init(hardware.GetPin(15), samplerate / 48.f); // 22
-	change_page.Init(hardware.GetPin(26), samplerate / 48.f);
+	change_page.Init(hardware.GetPin(24), samplerate / 48.f);
 }
 
 void initPots(){
-	pots[0].InitSingle(hardware.GetPin(21)); // 28, change bpm
-	pots[1].InitSingle(hardware.GetPin(20)); // 27, change cut-off freq
-	pots[2].InitSingle(hardware.GetPin(19)); // 26, change resonance
-	pots[3].InitSingle(hardware.GetPin(22)); // 29, note pitch
-	pots[4].InitSingle(hardware.GetPin(23)); // 30, decay
-	pots[5].InitSingle(hardware.GetPin(18)); // 25, env_mod
-	pots[6].InitSingle(hardware.GetPin(16)); // 23, env_mod
+	pots[0].InitSingle(hardware.GetPin(16)); // 23, change bpm
+	pots[1].InitSingle(hardware.GetPin(17)); // 24, change cut-off freq
+	pots[2].InitSingle(hardware.GetPin(18)); // 25, change resonance
+	pots[3].InitSingle(hardware.GetPin(21)); // 28, note pitch
+	pots[4].InitSingle(hardware.GetPin(20)); // 27, decay
+	pots[5].InitSingle(hardware.GetPin(19)); // 26, env_mod
+	pots[6].InitSingle(hardware.GetPin(28)); // 35, drive
 	hardware.adc.Init(pots, NUMBER_OF_POTS); // Set ADC to use our configuration, and how many pots
 }
 
@@ -589,14 +630,14 @@ void initTick(float samplerate){
 
 
 void initSeqButtons(){
-	seq_button1.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button2.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button3.Init(daisy::seed::D9, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button4.Init(daisy::seed::D10, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button5.Init(daisy::seed::D11, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button6.Init(daisy::seed::D12, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button7.Init(daisy::seed::D13, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button8.Init(daisy::seed::D14, GPIO::Mode::INPUT, GPIO::Pull::PULLDOWN);
+	seq_button1.Init(daisy::seed::D1, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button2.Init(daisy::seed::D2, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button3.Init(daisy::seed::D3, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button4.Init(daisy::seed::D4, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button5.Init(daisy::seed::D6, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button6.Init(daisy::seed::D5, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button7.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button8.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
 
 	seq_buttons = {seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8};
 }
@@ -604,6 +645,7 @@ void initSeqButtons(){
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
 	if(active) {
 		prepareAudioBlock(size, out);
+		// Change decoder write here if want to see led light up on inactive steps aswell
 		if(current_note)
 			triggerSequence();
 
@@ -640,11 +682,17 @@ int main(void) {
 	dist.SetDrive(0.5);
 	
 	//change_page.Init(daisy::seed::D5, GPIO::Mode::INPUT);
-	led_decoder_out1.Init(daisy::seed::D4, GPIO::Mode::OUTPUT);
-	led_decoder_out2.Init(daisy::seed::D5, GPIO::Mode::OUTPUT);
-	led_decoder_out3.Init(daisy::seed::D6, GPIO::Mode::OUTPUT);
-	page_led.Init(daisy::seed::D3, GPIO::Mode::OUTPUT);
+	led_decoder_out1.Init(daisy::seed::D12, GPIO::Mode::OUTPUT);
+	led_decoder_out2.Init(daisy::seed::D13, GPIO::Mode::OUTPUT);
+	led_decoder_out3.Init(daisy::seed::D14, GPIO::Mode::OUTPUT);
+	page_led.Init(daisy::seed::D23, GPIO::Mode::OUTPUT);
     
+	//debug_led.Init(daisy::seed::D2, GPIO::Mode::OUTPUT);
+
+	GPIO demux;
+	demux.Init(daisy::seed::D22, GPIO::Mode::OUTPUT);
+	demux.Write(false); // or false, depending on decoder
+
     /* 
 		Initialize random generator, and start callback.
 	*/
