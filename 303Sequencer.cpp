@@ -265,6 +265,7 @@ bool debounce_shift(GPIO &button, uint16_t &state) {
   state = (state << 1) | button.Read() | 0xfe00;
   return (state == 0xff00);
 }
+
 /*
 bool debounce_shift(GPIO button, uint16_t &state) {
   //static uint16_t state = 0;
@@ -376,13 +377,6 @@ void handleSequenceButtons(){
 //int page_button_counter = 0;
 
 void inputHandler(){
-	
-	/*if(page_adder == 0)
-		debug_led.Write(false);
-	else
-		debug_led.Write(true);*/
-	//debug_led.Write((active_step + 1) & 0x1);
-	
 	// Filters out noise from button-press.	
 	
 	activate_slide.Debounce();
@@ -636,14 +630,14 @@ void initTick(float samplerate){
 
 
 void initSeqButtons(){
-	seq_button1.Init(daisy::seed::D1, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button2.Init(daisy::seed::D2, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button3.Init(daisy::seed::D3, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button4.Init(daisy::seed::D4, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button5.Init(daisy::seed::D6, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button6.Init(daisy::seed::D5, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button7.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
-	seq_button8.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::PULLUP);
+	seq_button1.Init(daisy::seed::D1, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button2.Init(daisy::seed::D2, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button3.Init(daisy::seed::D3, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button4.Init(daisy::seed::D4, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button5.Init(daisy::seed::D6, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button6.Init(daisy::seed::D5, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button7.Init(daisy::seed::D7, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
+	seq_button8.Init(daisy::seed::D8, GPIO::Mode::INPUT, GPIO::Pull::NOPULL);
 
 	seq_buttons = {seq_button1, seq_button2, seq_button3, seq_button4, seq_button5, seq_button6, seq_button7, seq_button8};
 }
@@ -651,6 +645,7 @@ void initSeqButtons(){
 void playSequence(size_t size, AudioHandle::InterleavingOutputBuffer out){
 	if(active) {
 		prepareAudioBlock(size, out);
+		// Change decoder write here if want to see led light up on inactive steps aswell
 		if(current_note)
 			triggerSequence();
 
